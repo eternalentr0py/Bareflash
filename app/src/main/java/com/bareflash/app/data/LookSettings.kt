@@ -27,13 +27,12 @@ enum class CardStyle(val label: String) { FILLED("Filled"), OUTLINED("Outlined")
 
 /**
  * Everything that shapes how the app looks, beyond the dark / light choice in
- * [AppearanceSettings]. The defaults are stock Android: dynamic colour on
- * Android 12+, the AOSP fallback blue everywhere else, system fonts, standard
- * Material shapes and motion.
+ * [AppearanceSettings]. Defaults favour a stable seeded palette (not Material You)
+ * so the first launch looks the same on every device.
  */
 data class LookSettings(
-    /** Follow the wallpaper (Material You) on Android 12+. */
-    val dynamicColor: Boolean = true,
+    /** Follow the wallpaper (Material You) on Android 12+. Off by default. */
+    val dynamicColor: Boolean = false,
     /** Seed used when dynamic colour is off or unavailable. AOSP's default blue. */
     val seedColor: Int = DEFAULT_SEED,
     val variant: SchemeVariant = SchemeVariant.TONAL_SPOT,

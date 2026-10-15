@@ -35,7 +35,7 @@ data class IslandSettings(
     val opacity: Float = 1f,
     val shadow: Boolean = true,
     val pulseLed: Boolean = true,
-    val showLenses: Boolean = true,
+    val showLenses: Boolean = false,
     val showLed: Boolean = true,
     val showDevice: Boolean = true,
     val showMode: Boolean = true,
