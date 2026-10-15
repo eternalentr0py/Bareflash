@@ -95,8 +95,11 @@ fun TutorialOverlay(onClose: () -> Unit) {
         )
 
         HorizontalPager(state = pager, modifier = Modifier.weight(1f).fillMaxWidth()) { p ->
-            // A fresh counter per page, so its blocks enter one after another each time it is shown.
-            CompositionLocalProvider(LocalReveal provides remember(p) { RevealScope() }) {
+            // Fresh counter per page index. active is true only for the current page so
+            // precomposed neighbours do not run (and exhaust) their entrance animations early.
+            val reveal = remember(p) { RevealScope() }
+            reveal.active = (p == pager.currentPage)
+            CompositionLocalProvider(LocalReveal provides reveal) {
                 Column(
                     Modifier
                         .fillMaxSize()

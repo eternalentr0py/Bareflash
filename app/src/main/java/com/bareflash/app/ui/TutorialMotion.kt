@@ -36,6 +36,10 @@ import kotlinx.coroutines.delay
  * Motion for the tutorial: a staggered entrance for every block on a page and
  * an animated icon medallion at the top of each page. Both stand still when
  * the system animation scale is off.
+ *
+ * Entrance animations only run while the page is the *current* pager page.
+ * HorizontalPager keeps neighbours composed; without this gate the reveals
+ * fire early and later pages look blank.
  */
 
 @Composable
@@ -49,6 +53,8 @@ internal fun rememberTutorialReduceMotion(): Boolean {
 /** Counts the blocks on one page so each one enters a little after the one above it. */
 internal class RevealScope {
     var next = 0
+    /** True only while this page is the pager's current page. */
+    var active: Boolean = false
 }
 
 internal val LocalReveal = compositionLocalOf { RevealScope() }
@@ -59,12 +65,20 @@ internal fun Modifier.reveal(): Modifier {
     val scope = LocalReveal.current
     val order = remember { scope.next++ }
     val reduce = rememberTutorialReduceMotion()
+    val active = scope.active
     val progress = remember { Animatable(if (reduce) 1f else 0f) }
-    LaunchedEffect(Unit) {
-        if (!reduce) {
-            delay((order * 70L).coerceAtMost(420L))
-            progress.animateTo(1f, tween(380, easing = FastOutSlowInEasing))
+    LaunchedEffect(active, reduce) {
+        if (reduce) {
+            progress.snapTo(1f)
+            return@LaunchedEffect
         }
+        if (!active) {
+            // Reset so the animation plays again when the user returns to this page.
+            progress.snapTo(0f)
+            return@LaunchedEffect
+        }
+        delay((order * 70L).coerceAtMost(420L))
+        progress.animateTo(1f, tween(380, easing = FastOutSlowInEasing))
     }
     return this.graphicsLayer {
         alpha = progress.value
