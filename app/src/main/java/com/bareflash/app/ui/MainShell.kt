@@ -231,7 +231,11 @@ fun MainShell(
         s.events.collect { toast = it }
     }
 
-    CompositionLocalProvider(LocalIsland provides controller, LocalContentColor provides Nc.Fg) {
+    CompositionLocalProvider(
+        LocalIsland provides controller,
+        LocalContentColor provides Nc.Fg,
+        LocalSettingsRootKey provides settingsRootKey
+    ) {
         Box(Modifier.fillMaxSize().background(LocalNcScreen.current)) {
             Column(Modifier.fillMaxSize().imePadding()) {
                 Column(
