@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dialog exit: quick fade with a slight shrink, Material emphasized-accelerate. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="false">
+    <scale
+        android:fromXScale="1.0" android:toXScale="0.94"
+        android:fromYScale="1.0" android:toYScale="0.94"
+        android:pivotX="50%" android:pivotY="50%"
+        android:duration="150">
+        <pathInterpolator
+            android:controlX1="0.3" android:controlY1="0.0"
+            android:controlX2="0.8" android:controlY2="0.15" />
+    </scale>
+    <alpha
+        android:fromAlpha="1.0" android:toAlpha="0.0"
+        android:duration="120">
+        <pathInterpolator
+            android:controlX1="0.3" android:controlY1="0.0"
+            android:controlX2="1.0" android:controlY2="1.0" />
+    </alpha>
+</set>

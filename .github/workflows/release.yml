@@ -1,0 +1,171 @@
+name: Build & Release
+
+# Run it from the Actions tab ("Run workflow"). It builds a release APK and
+# publishes it, with a checksum, to the repository's Releases page.
+#
+# Desktop QDL engine tests are not part of this workflow. Run
+# app/src/main/cpp/host/run_tests.sh locally. They used to gate the APK job
+# (a full host cmake + JNI pass) and were the longest serial wait before
+# packaging even started.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number, e.g. 1.0.0 (tag becomes v1.0.0)"
+        required: true
+        default: "1.0.0"
+      prerelease:
+        description: "Mark as pre-release"
+        type: boolean
+        default: false
+      notes:
+        description: "Release notes (optional; changelog is generated if empty)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write   # create the release and upload the APK
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Chaquopy needs a build-time Python matching chaquopy.defaultConfig.version.
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # The action defaults to installing the obsolete `tools` package, which
+      # Google removed from the SDK repo ("Failed to find package 'tools'").
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      # NDK r27 + CMake is ~1 GB. Cache it so repeat releases skip sdkmanager.
+      - name: Cache NDK and CMake
+        id: ndk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+            ${{ env.ANDROID_HOME }}/cmake/3.22.1
+          key: ${{ runner.os }}-ndk-27.2.12479018-cmake-3.22.1
+
+      - name: Install NDK and CMake
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          set -o pipefail
+          sdkmanager --install "cmake;3.22.1" "ndk;27.2.12479018"
+
+      - name: Export NDK location
+        run: echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      # Caches ~/.gradle (dependencies, wrapper dist, and the build cache
+      # enabled by org.gradle.caching in gradle.properties).
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      # Sign with your own key: add these repository secrets
+      #   KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
+      # Without them only a PRE-RELEASE can be published (signed with the shared
+      # debug key). A stable release is refused: an APK signed with the public
+      # debug key cannot be updated later without users uninstalling first.
+      - name: Prepare release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          IS_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          # Secrets arrive as env vars, never interpolated into the script text,
+          # so quotes/$/backticks/newlines in a password cannot break the shell.
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.keystore"
+            {
+              echo "BAREFLASH_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore"
+              echo "BAREFLASH_KEYSTORE_PASSWORD=$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d '\r\n')"
+              echo "BAREFLASH_KEY_ALIAS=$(printf '%s' "$KEY_ALIAS" | tr -d '\r\n')"
+              echo "BAREFLASH_KEY_PASSWORD=$(printf '%s' "$KEY_PASSWORD" | tr -d '\r\n')"
+              echo "SIGNING=release key"
+            } >> "$GITHUB_ENV"
+          else
+            if [ "$IS_PRERELEASE" != "true" ]; then
+              echo "::error::No release keystore configured. Add KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD as repository secrets (see docs/RELEASE_CHECKLIST.md), or tick 'Mark as pre-release' to publish a debug-signed test build."
+              exit 1
+            fi
+            echo "SIGNING=shared debug key (pre-release only)" >> "$GITHUB_ENV"
+          fi
+
+      # assembleRelease does not run unit tests or the desktop QDL engine suite.
+      # --build-cache reuses native/Kotlin outputs saved by setup-gradle.
+      - name: Build release APK
+        run: >
+          ./gradlew assembleRelease --stacktrace --parallel --build-cache
+          -Dorg.gradle.vfs.watch=false
+          -PversionName=${{ inputs.version }}
+          -PversionCode=${{ github.run_number }}
+
+      - name: Name the APK and compute its checksum
+        id: apk
+        run: |
+          mkdir -p dist
+          src=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+          out="dist/Bareflash-${{ inputs.version }}.apk"
+          cp "$src" "$out"
+          (cd dist && sha256sum "Bareflash-${{ inputs.version }}.apk" > "Bareflash-${{ inputs.version }}.apk.sha256")
+          echo "sha=$(cut -d' ' -f1 dist/*.sha256)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Bareflash ${{ inputs.version }}
+          prerelease: ${{ inputs.prerelease }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: ${{ inputs.notes == '' }}
+          body: |
+            ${{ inputs.notes }}
+
+            **Install:** download `Bareflash-${{ inputs.version }}.apk` on your phone and open it
+            (allow "install unknown apps" for your browser or file manager when asked).
+
+            Licensed under GPL-3.0. Corresponding source for this build: https://github.com/${{ github.repository }}/tree/v${{ inputs.version }}
+
+            Signed with the ${{ env.SIGNING }}. SHA-256: `${{ steps.apk.outputs.sha }}`
+          files: |
+            dist/*.apk
+            dist/*.sha256
+
+      - name: Keep the build log if it failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports
+          path: |
+            app/build/reports/**
+            app/.cxx/**/*.log
+          if-no-files-found: ignore

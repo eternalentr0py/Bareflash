@@ -1,0 +1,35 @@
+# Gradle / Android build output
+build/
+.gradle/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# Machine-specific configuration
+local.properties
+*.iml
+.idea/
+.DS_Store
+
+# Chaquopy build cache
+app/.chaquopy/
+
+# Keystores
+*.jks
+*.keystore
+# ...except the shared debug keystore below, committed intentionally so
+# every build (CI included) signs debug builds identically. Never do this
+# for a release keystore.
+!app/debug.keystore
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Keep the wrapper
+!gradle/wrapper/gradle-wrapper.jar
+
+# CI output
+dist/

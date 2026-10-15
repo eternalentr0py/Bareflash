@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    MediaTek's USB vendor ID is 0x0E8D (3725 decimal), used across brom,
+    preloader and DA modes with varying product IDs. Matching on vendor id
+    alone catches all of them; narrow to specific product-ids if you want
+    to be stricter.
+-->
+<resources>
+    <!-- MediaTek (0x0E8D) -->
+    <usb-device vendor-id="3725" />
+    <!-- Qualcomm (0x05C6): EDL / Sahara 9008 -->
+    <usb-device vendor-id="1478" />
+    <!-- Samsung (0x04E8) in Odin / download mode only (PIDs 0x6601, 0x685D, 0x68C3),
+         so a Samsung phone plugged in for charging or MTP does not trigger us. -->
+    <usb-device vendor-id="1256" product-id="26113" />
+    <usb-device vendor-id="1256" product-id="26717" />
+    <usb-device vendor-id="1256" product-id="26819" />
+</resources>

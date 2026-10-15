@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="nc_void">#0A0908</color>
+    <color name="bf_primary">#5AA9FF</color>
+    <color name="bf_on_primary">#03101C</color>
+    <color name="bf_primary_container">#10263D</color>
+    <color name="bf_on_primary_container">#5AA9FF</color>
+    <color name="bf_secondary">#FF8A3D</color>
+    <color name="ic_launcher_background">#0A0908</color>
+
+    <color name="terminal_bg">#0E0D0B</color>
+    <color name="terminal_fg">#F1EDE6</color>
+    <color name="terminal_hint">#6F685E</color>
+    <color name="terminal_divider">#24211D</color>
+</resources>

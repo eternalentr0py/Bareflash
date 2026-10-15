@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Stock Material 3 DayNight window theme. Compose draws every colour from
+         the in-app theme; this only decides the pre-Compose window background. -->
+    <style name="Theme.Bareflash" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">?attr/colorSurface</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">?attr/isLightTheme</item>
+    </style>
+
+    <!-- Window animations for every dialog (see NcAlertDialog). -->
+    <style name="BfDialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/bf_dialog_enter</item>
+        <item name="android:windowExitAnimation">@anim/bf_dialog_exit</item>
+    </style>
+</resources>

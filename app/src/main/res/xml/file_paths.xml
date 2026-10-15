@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Local fallback for dumps when no SAF folder is chosen, and flash
+         inputs copied in from the picker. Share uses FileProvider only
+         for these local files; SAF dumps are shared via their content URI. -->
+    <external-files-path name="dumps" path="dumps/" />
+    <!-- Log exports (zip) built on demand by AppLog. -->
+    <cache-path name="log_export" path="log_export/" />
+</paths>

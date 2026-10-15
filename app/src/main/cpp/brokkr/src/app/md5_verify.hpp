@@ -1,0 +1,63 @@
+/*
+ * Copyright (c) 2026 Gabriel2392
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#pragma once
+
+#include "core/status.hpp"
+#include "io/random_access.hpp"
+#include "protocol/odin/group_flasher.hpp"
+
+#include <array>
+#include <atomic>
+#include <cstdint>
+#include <filesystem>
+#include <functional>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace brokkr::app {
+
+class HashReader {
+ public:
+  virtual ~HashReader() = default;
+
+  virtual brokkr::core::Status open() noexcept = 0;
+  virtual brokkr::core::Result<std::size_t> read_some(unsigned char* data, std::size_t want) noexcept = 0;
+};
+
+struct Md5Job {
+  std::string display_name;
+  std::string identity_path;
+  std::uint64_t identity_size = 0;
+  std::int64_t identity_write_time = 0;
+  std::uint64_t bytes_to_hash = 0;
+  std::array<unsigned char, 16> expected{};
+  std::function<brokkr::core::Result<std::unique_ptr<HashReader>>()> open_reader;
+};
+
+brokkr::core::Result<std::vector<Md5Job>> md5_jobs(const std::vector<std::filesystem::path>& inputs) noexcept;
+brokkr::core::Result<std::vector<Md5Job>> md5_jobs_from_sources(
+    const std::vector<brokkr::io::RandomAccessSourcePtr>& inputs) noexcept;
+std::string_view md5_verify_name(const std::vector<Md5Job>& jobs) noexcept;
+brokkr::core::Status md5_verify(const std::vector<Md5Job>& jobs, const brokkr::odin::Ui& ui,
+                                std::atomic<bool>* cancel = nullptr) noexcept;
+
+void clear_session_verify_cache() noexcept;
+
+} // namespace brokkr::app
