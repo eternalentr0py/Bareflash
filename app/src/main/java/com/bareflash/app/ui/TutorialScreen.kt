@@ -95,11 +95,13 @@ fun TutorialOverlay(onClose: () -> Unit) {
         )
 
         HorizontalPager(state = pager, modifier = Modifier.weight(1f).fillMaxWidth()) { p ->
-            // Fresh counter per page index. active is true only for the current page so
-            // precomposed neighbours do not run (and exhaust) their entrance animations early.
+            // Fresh stagger counter per page index. Active is a reactive CompositionLocal
+            // derived from pager.currentPage so reveals recompose and run on Next/Back.
             val reveal = remember(p) { RevealScope() }
-            reveal.active = (p == pager.currentPage)
-            CompositionLocalProvider(LocalReveal provides reveal) {
+            CompositionLocalProvider(
+                LocalReveal provides reveal,
+                LocalRevealActive provides (p == pager.currentPage)
+            ) {
                 Column(
                     Modifier
                         .fillMaxSize()

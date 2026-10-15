@@ -37,9 +37,9 @@ import kotlinx.coroutines.delay
  * an animated icon medallion at the top of each page. Both stand still when
  * the system animation scale is off.
  *
- * Entrance animations only run while the page is the *current* pager page.
- * HorizontalPager keeps neighbours composed; without this gate the reveals
- * fire early and later pages look blank.
+ * [LocalRevealActive] is true only for the pager's current page so entrance
+ * animations start when you land on a page, not while HorizontalPager is still
+ * precomposing neighbours.
  */
 
 @Composable
@@ -53,11 +53,15 @@ internal fun rememberTutorialReduceMotion(): Boolean {
 /** Counts the blocks on one page so each one enters a little after the one above it. */
 internal class RevealScope {
     var next = 0
-    /** True only while this page is the pager's current page. */
-    var active: Boolean = false
 }
 
 internal val LocalReveal = compositionLocalOf { RevealScope() }
+
+/**
+ * True while this page is the pager's selected page. Provided as a CompositionLocal
+ * so it is reactive — a plain field on [RevealScope] would not recompose children.
+ */
+internal val LocalRevealActive = compositionLocalOf { true }
 
 /** Fades a block in and slides it up, delayed by its position on the page. */
 @Composable
@@ -65,7 +69,8 @@ internal fun Modifier.reveal(): Modifier {
     val scope = LocalReveal.current
     val order = remember { scope.next++ }
     val reduce = rememberTutorialReduceMotion()
-    val active = scope.active
+    val active = LocalRevealActive.current
+    // Start fully visible when motion is off; otherwise wait for the active-page gate.
     val progress = remember { Animatable(if (reduce) 1f else 0f) }
     LaunchedEffect(active, reduce) {
         if (reduce) {
@@ -73,10 +78,12 @@ internal fun Modifier.reveal(): Modifier {
             return@LaunchedEffect
         }
         if (!active) {
-            // Reset so the animation plays again when the user returns to this page.
-            progress.snapTo(0f)
+            // Stay put. Do not snap to 0 — that left whole pages blank when the
+            // pager kept them composed but not selected, and when going Back.
             return@LaunchedEffect
         }
+        // Landing on this page: play (or replay) the staggered entrance.
+        progress.snapTo(0f)
         delay((order * 70L).coerceAtMost(420L))
         progress.animateTo(1f, tween(380, easing = FastOutSlowInEasing))
     }
