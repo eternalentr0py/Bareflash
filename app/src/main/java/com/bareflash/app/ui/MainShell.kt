@@ -61,6 +61,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
@@ -135,6 +136,8 @@ fun MainShell(
 ) {
     var tabState by rememberSaveable { mutableStateOf(Tab.Console) }
     var showModes by rememberSaveable { mutableStateOf(false) }
+    // Bumped when the already-selected Settings tab is tapped again so SettingsScreen returns to its root.
+    var settingsRootKey by rememberSaveable { mutableIntStateOf(0) }
     val controller = remember { IslandController() }
     val app by AppGraph.settings.state.collectAsStateWithLifecycle()
     val island = app.island
@@ -267,7 +270,19 @@ fun MainShell(
                     enter = expandVertically(tween(motionMs(250), easing = NcEasing.EmphasizedDecelerate)) + fadeIn(tween(motionMs(200))),
                     exit = shrinkVertically(tween(motionMs(200), easing = NcEasing.EmphasizedAccelerate)) + fadeOut(tween(motionMs(120)))
                 ) {
-                    BottomNav(tab, tabs, mode, running, onOpenModes = { showModes = true }) { selectTab(it) }
+                    BottomNav(
+                        selected = tab,
+                        tabs = tabs,
+                        mode = mode,
+                        modeLocked = running,
+                        onOpenModes = { showModes = true },
+                        onSelect = { t ->
+                            if (t == Tab.Settings && tab == Tab.Settings) {
+                                settingsRootKey++
+                            }
+                            selectTab(t)
+                        }
+                    )
                 }
             }
 
@@ -322,7 +337,8 @@ private fun BottomNav(
             val on = selected == t
             NavigationBarItem(
                 selected = on,
-                onClick = { if (!on) onSelect(t) },
+                // Always invoke onSelect so re-tapping the selected tab can pop nested UI (Settings).
+                onClick = { onSelect(t) },
                 icon = { Icon(if (on) t.filled else t.outlined, contentDescription = t.label) },
                 label = if (labels == NavLabelMode.NEVER) null else ({ Text(t.label, maxLines = 1) }),
                 alwaysShowLabel = labels == NavLabelMode.ALWAYS
