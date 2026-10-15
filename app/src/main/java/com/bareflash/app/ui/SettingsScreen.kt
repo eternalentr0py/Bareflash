@@ -40,6 +40,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +66,9 @@ import com.bareflash.app.ui.theme.NcEasing
 import com.bareflash.app.ui.theme.Nc
 import com.bareflash.app.ui.theme.motionMs
 import kotlin.coroutines.cancellation.CancellationException
+
+/** Bumped by MainShell when the already-selected Settings tab is tapped again. */
+val LocalSettingsRootKey = compositionLocalOf { 0 }
 
 /**
  * The Settings tab. This file holds only the shell that switches between
@@ -101,6 +106,12 @@ private fun Page.depth(): Int = when (this) {
 fun SettingsScreen(vm: ConsoleViewModel) {
     var page by rememberSaveable { mutableStateOf(Page.Main) }
     var backProgress by remember { mutableFloatStateOf(0f) }
+    val rootKey = LocalSettingsRootKey.current
+
+    // Re-tapping the Settings tab in the bottom bar bumps rootKey; snap back to the list.
+    LaunchedEffect(rootKey) {
+        if (rootKey > 0) page = Page.Main
+    }
 
     // System back gesture: the page follows your finger (shrinks and slides
     // right) and either commits to the list or springs back.
