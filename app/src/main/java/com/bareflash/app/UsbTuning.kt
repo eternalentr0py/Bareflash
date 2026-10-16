@@ -14,6 +14,12 @@ import kotlinx.coroutines.flow.asStateFlow
  * Efficient (safe default on):
  *  - [fusedRead]: MediaTek READ_DATA frame loop in one native call per batch.
  *
+ * Experimental (default **off**, needs a device test):
+ *  - [daWindowsEnv]: tell the MediaTek XFlash DA the host is Windows instead
+ *    of Linux when the environment is set up. On the MT6765 DA that appears to
+ *    lift the read frame from 64 KiB to 2 MiB (see docs/USB_PERFORMANCE.md).
+ *    Takes effect when the DA is next loaded, i.e. from the next command.
+ *
  * Power / heat fallbacks (default **off** — turn on only to A/B the
  * "rotation restores speed" behaviour):
  *  - [busyWait]: poll instead of sleep while a USB transfer is outstanding.
@@ -27,6 +33,10 @@ object UsbTuning {
 
     private val _fused = MutableStateFlow(true)
     val fusedRead: StateFlow<Boolean> = _fused.asStateFlow()
+
+    /** MediaTek DA setup_env reports system_os=Windows (0) instead of Linux (1). */
+    private val _daWin = MutableStateFlow(false)
+    val daWindowsEnv: StateFlow<Boolean> = _daWin.asStateFlow()
 
     private val _busy = MutableStateFlow(false)
     val busyWait: StateFlow<Boolean> = _busy.asStateFlow()
@@ -45,6 +55,7 @@ object UsbTuning {
         val p = ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefs = p
         _fused.value = p.getBoolean("fused_read", true)
+        _daWin.value = p.getBoolean("da_windows_env", false)
         // Heat sources default off so a normal dump does not cook the phone.
         _busy.value = p.getBoolean("busy_wait", false)
         _hold.value = p.getBoolean("hold_clusters", false)
@@ -53,11 +64,14 @@ object UsbTuning {
         AppLog.i(
             "usb-tuning",
             "fusedRead=${_fused.value} busyWait=${_busy.value} " +
-                "holdClusters=${_hold.value} boostKeeper=${_keeper.value}"
+                "holdClusters=${_hold.value} boostKeeper=${_keeper.value} " +
+                "daWindowsEnv=${_daWin.value}"
         )
     }
 
     fun setFusedRead(on: Boolean) = set("fused_read", on, _fused)
+
+    fun setDaWindowsEnv(on: Boolean) = set("da_windows_env", on, _daWin)
 
     fun setBusyWait(on: Boolean) {
         set("busy_wait", on, _busy)

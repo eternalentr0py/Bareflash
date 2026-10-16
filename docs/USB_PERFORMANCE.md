@@ -47,6 +47,39 @@ whichever core the kernel chose, often in the little cluster, whose clock stayed
 low. One light low-priority spinner per cluster keeps every cluster clocked up
 for the length of a command. It releases itself at moderate thermal status.
 
+## Larger read frames (experimental, untested on hardware)
+
+Settings → Experimental → *Larger read frames (report Windows)*, off by default.
+
+Reads are slow mostly because the DA sends 64 KiB frames and the phone spends
+about 4 ms per frame preparing the next one, against about 2 ms of actual USB
+transfer. Reading the MT6765 XFlash DA2 (the `0x6765` entry of
+`MTK_DA_V5.bin`, ARM Thumb-2, loaded at `0x40000000`) shows the 64 KiB is not a
+fixed limit:
+
+| Where | What it does |
+|---|---|
+| `0x40005ed4` | `GET_PACKET_LENGTH` handler: returns the two words at `0x4005a600+0x10` (write) and `+0x14` (read) |
+| `0x4000b3fc` | storage init: write = `0x200000`; read = `0x10000` only if the flag at `0x4005a600+0xc` is 1, else `0x200000` |
+
+`setup_env` sends `system_os` (the DA logs it as `system_os=%d(0:windows,
+1:linux)`) and the client has always sent Linux (1). The switch sends Windows
+(0) instead. **What is not confirmed:** that `system_os` is what sets that flag
+(`ufs_provision` is the other candidate), and that the DA's buffers really
+handle 2 MiB read frames.
+
+How to read the result: run a dump and search the log for `get_packet_length`.
+
+- `read=0x200000`: the DA took the hint. Compare the `read ... MiB/s` line with
+  a run with the switch off. The fused loop now buffers at most 1 MiB per call,
+  so a 2 MiB frame is one frame per call.
+- `read=0x10000`: nothing changed, so the flag comes from somewhere else. Turn
+  the switch off.
+- The read fails or hangs: turn the switch off and reconnect. Only the
+  RAM-resident DA is affected. Keep it off for writes until a read has worked.
+
+Applies only to XFlash (V5) DAs. XML (V6) loaders are unaffected.
+
 ## Diagnosing a slow or failing read
 
 Settings → Logging, search `xflash`:

@@ -95,6 +95,11 @@ class DAXFlash(metaclass=LogBase):
         return
 
     FAST_READ_BATCH = 16
+    # Upper bound on the bytes one fused call may buffer. 16 x 64 KiB frames is
+    # 1 MiB; without this cap 16 x 2 MiB frames (the DA's larger read frame)
+    # would allocate and copy 32 MiB per call. A 2 MiB frame is already one
+    # call per 2 MiB, so the batch simply shrinks to a single frame.
+    FAST_READ_BATCH_BYTES = 1 << 20
 
     def _applog_event(self, level, message):
         """Mirror a diagnostic line into the app's log (Settings -> Logging)."""
@@ -119,6 +124,18 @@ class DAXFlash(metaclass=LogBase):
             if not bool(_UsbBridge.isFusedReadEnabled()):
                 return False
             return hasattr(_UsbBridge, "readFrames")
+        except Exception:
+            return False
+
+    def _da_report_windows(self) -> bool:
+        """Settings -> Experimental -> "Larger read frames". True makes setup_env
+        report system_os=Windows. Always False off Android or if the bridge
+        lacks the switch, so the protocol stays exactly as before."""
+        if not self._android_usb():
+            return False
+        try:
+            from com.bareflash.app import UsbBridge as _UsbBridge
+            return bool(_UsbBridge.isDaWindowsEnvEnabled())
         except Exception:
             return False
 
@@ -1017,7 +1034,11 @@ class DAXFlash(metaclass=LogBase):
                         # frame it does not understand is handed back and the
                         # loop below handles it exactly as before.
                         fused_calls += 1
-                        nfr = min(self.FAST_READ_BATCH, seg_left // read_packet_length)
+                        nfr = min(
+                            self.FAST_READ_BATCH,
+                            max(1, self.FAST_READ_BATCH_BYTES // read_packet_length),
+                            seg_left // read_packet_length,
+                        )
                         fbuf, finfo, fhdr = self._fast_read_batch(read_packet_length, nfr)
                         t_f = _pc()
                         if finfo[0] != 0 and not finfo[3]:
@@ -1486,7 +1507,16 @@ class DAXFlash(metaclass=LogBase):
         if self.xsend(self.cmd.SETUP_ENVIRONMENT):
             da_log_level = int(self.daconfig.uartloglevel)
             log_channel = 1
-            system_os = self.ft_system_ose.OS_LINUX
+            # The MT6765 XFlash DA appears to pick its READ_DATA frame from this:
+            # 64 KiB when told Linux, 2 MiB otherwise (docs/USB_PERFORMANCE.md;
+            # not yet confirmed on hardware). The app switch is off by default.
+            # XML (V6) loaders have their own setup and are not affected.
+            if self._da_report_windows():
+                system_os = self.ft_system_ose.OS_WIN
+                self._applog_event("I", "[xflash] setup_env: reporting system_os=Windows "
+                                        "(Settings -> Experimental)")
+            else:
+                system_os = self.ft_system_ose.OS_LINUX
             ufs_provision = 0x0
             param = pack("<IIIII", da_log_level, log_channel, system_os, ufs_provision, 0x0)
             if self.send_param(param):

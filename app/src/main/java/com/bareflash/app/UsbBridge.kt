@@ -593,6 +593,10 @@ object UsbBridge {
     @JvmStatic
     fun isFusedReadEnabled(): Boolean = UsbTuning.fusedRead.value
 
+    /** Settings -> Experimental. Read by the MediaTek DA setup (xflash_lib.setup_env). */
+    @JvmStatic
+    fun isDaWindowsEnvEnabled(): Boolean = UsbTuning.daWindowsEnv.value
+
     private val framesInfo = IntArray(7)
     private val framesHdr = ByteArray(16)
 

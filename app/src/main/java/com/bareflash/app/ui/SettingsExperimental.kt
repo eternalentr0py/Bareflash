@@ -40,6 +40,7 @@ private enum class UsbPreset { Cool, Speed, Custom }
 @Composable
 internal fun ExperimentalPage() {
     val fused by UsbTuning.fusedRead.collectAsStateWithLifecycle()
+    val daWin by UsbTuning.daWindowsEnv.collectAsStateWithLifecycle()
     val busy by UsbTuning.busyWait.collectAsStateWithLifecycle()
     val hold by UsbTuning.holdClusters.collectAsStateWithLifecycle()
     val keeper by UsbTuning.boostKeeper.collectAsStateWithLifecycle()
@@ -89,9 +90,20 @@ internal fun ExperimentalPage() {
         SectionLabel("USB throughput")
         SwitchRow(
             "Fused MediaTek read",
-            "Receives each 64 KiB read frame in one native call. Efficient — no extra heat.",
+            "Receives each read frame (64 KiB unless the DA offers more) in one native call. Efficient — no extra heat.",
             fused
         ) { UsbTuning.setFusedRead(it) }
+
+        SectionLabel("MediaTek download agent")
+        SwitchRow(
+            "Larger read frames (report Windows)",
+            "Tells the MediaTek XFlash (V5) DA the host is Windows instead of Linux. On the MT6765 DA this appears to " +
+                "raise the read frame from 64 KiB to 2 MiB, which can speed up dumps. Untested on hardware: " +
+                "try reading a small partition first and keep it off for writes until a read has worked. " +
+                "Applies from the next command. " +
+                "The log line \"get_packet_length\" shows the frame size the DA chose.",
+            daWin
+        ) { UsbTuning.setDaWindowsEnv(it) }
 
         SectionLabel("Dump integrity")
         SwitchRow(
