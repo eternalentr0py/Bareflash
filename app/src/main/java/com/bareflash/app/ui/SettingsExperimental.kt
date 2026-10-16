@@ -41,6 +41,7 @@ private enum class UsbPreset { Cool, Speed, Custom }
 internal fun ExperimentalPage() {
     val fused by UsbTuning.fusedRead.collectAsStateWithLifecycle()
     val daWin by UsbTuning.daWindowsEnv.collectAsStateWithLifecycle()
+    val daLog by UsbTuning.daLogUsb.collectAsStateWithLifecycle()
     val busy by UsbTuning.busyWait.collectAsStateWithLifecycle()
     val hold by UsbTuning.holdClusters.collectAsStateWithLifecycle()
     val keeper by UsbTuning.boostKeeper.collectAsStateWithLifecycle()
@@ -104,6 +105,15 @@ internal fun ExperimentalPage() {
                 "The log line \"get_packet_length\" shows the frame size the DA chose.",
             daWin
         ) { UsbTuning.setDaWindowsEnv(it) }
+        SwitchRow(
+            "DA log over USB (diagnostic)",
+            "The MediaTek XFlash DA prints its own speed dump after each transfer (storage read, USB write, " +
+                "memcpy), but only to a UART nobody can read. This makes the DA send those lines over USB and " +
+                "writes them to Settings → Logging as \"[DA] ...\". Useful for finding what limits dump speed. " +
+                "Untested on hardware: it adds a few small log packets to the protocol, so try a small read " +
+                "first, and leave it off for writes. Applies from the next command.",
+            daLog
+        ) { UsbTuning.setDaLogUsb(it) }
 
         SectionLabel("Dump integrity")
         SwitchRow(

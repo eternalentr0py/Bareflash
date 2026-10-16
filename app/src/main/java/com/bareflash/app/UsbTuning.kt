@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
  *    of Linux when the environment is set up. On the MT6765 DA that appears to
  *    lift the read frame from 64 KiB to 2 MiB (see docs/USB_PERFORMANCE.md).
  *    Takes effect when the DA is next loaded, i.e. from the next command.
+ *  - [daLogUsb]: diagnostic. Sends the MediaTek XFlash DA's own log lines
+ *    (including its per-transfer speed dump) over USB instead of its UART so
+ *    they show up in Settings -> Logging. Same timing as [daWindowsEnv].
  *
  * Power / heat fallbacks (default **off** — turn on only to A/B the
  * "rotation restores speed" behaviour):
@@ -38,6 +41,10 @@ object UsbTuning {
     private val _daWin = MutableStateFlow(false)
     val daWindowsEnv: StateFlow<Boolean> = _daWin.asStateFlow()
 
+    /** MediaTek DA setup_env asks for log_channel=USB; the host logs the DA's lines. */
+    private val _daLog = MutableStateFlow(false)
+    val daLogUsb: StateFlow<Boolean> = _daLog.asStateFlow()
+
     private val _busy = MutableStateFlow(false)
     val busyWait: StateFlow<Boolean> = _busy.asStateFlow()
 
@@ -56,6 +63,7 @@ object UsbTuning {
         prefs = p
         _fused.value = p.getBoolean("fused_read", true)
         _daWin.value = p.getBoolean("da_windows_env", false)
+        _daLog.value = p.getBoolean("da_log_usb", false)
         // Heat sources default off so a normal dump does not cook the phone.
         _busy.value = p.getBoolean("busy_wait", false)
         _hold.value = p.getBoolean("hold_clusters", false)
@@ -65,13 +73,15 @@ object UsbTuning {
             "usb-tuning",
             "fusedRead=${_fused.value} busyWait=${_busy.value} " +
                 "holdClusters=${_hold.value} boostKeeper=${_keeper.value} " +
-                "daWindowsEnv=${_daWin.value}"
+                "daWindowsEnv=${_daWin.value} daLogUsb=${_daLog.value}"
         )
     }
 
     fun setFusedRead(on: Boolean) = set("fused_read", on, _fused)
 
     fun setDaWindowsEnv(on: Boolean) = set("da_windows_env", on, _daWin)
+
+    fun setDaLogUsb(on: Boolean) = set("da_log_usb", on, _daLog)
 
     fun setBusyWait(on: Boolean) {
         set("busy_wait", on, _busy)

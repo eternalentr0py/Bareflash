@@ -80,6 +80,34 @@ How to read the result: run a dump and search the log for `get_packet_length`.
 
 Applies only to XFlash (V5) DAs. XML (V6) loaders are unaffected.
 
+## DA log over USB (diagnostic, untested on hardware)
+
+Settings → Experimental → *DA log over USB (diagnostic)*, off by default.
+
+The MT6765 XFlash DA already overlaps storage reads with USB sends: a reader
+thread fills one of two buffers (each one read frame big) while a
+`write_usb_proc` thread sends the other. So when reads are slow, the question is
+which stage is the slow one. The DA measures this itself and prints a speed dump
+after each transfer (`[Storage Read]`, `[USB Write]`, `[Memcpy]`, `[Overview]`,
+each with a MBps figure) at INFO level, but `setup_env` sends DA logs to the
+UART (`log_channel=1`), which cannot be read from the phone.
+
+With the switch on, `setup_env` asks for `log_channel=2` (USB). The DA then
+sends each log line as a packet in the normal stream: `0xFEEEEEEF`, type 2
+(`DT_MESSAGE`), length, then a u32 and the text. The host logs them as
+`[DA] ...` in Settings → Logging (speed lines are also echoed to the terminal as
+`[xflash] DA: ...`) and skips them wherever it reads a 12-byte header. Before
+each command the host also picks up any queued log packet, so the DA is not
+left waiting on its USB IN while the host sends.
+
+How to read the result: run a read of a few hundred MiB and compare the
+`[Storage Read]` and `[USB Write]` speeds. Whichever is near the host-measured
+MiB/s is the limit; if both are much higher, the limit is on the phone's
+receiving side.
+
+Applies only to XFlash (V5) DAs and takes effect when the DA is next loaded.
+Leave it off for writes. If a read fails or hangs, turn it off and reconnect.
+
 ## Diagnosing a slow or failing read
 
 Settings → Logging, search `xflash`:

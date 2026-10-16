@@ -127,6 +127,75 @@ class DAXFlash(metaclass=LogBase):
         except Exception:
             return False
 
+    # ---- DA log over USB (Settings -> Experimental, diagnostic, off by default)
+    # With log_channel=2 the DA sends its log lines as DT_MESSAGE packets
+    # (magic, type 2, len, then a u32 and the text) in the same stream as the
+    # protocol replies. They can appear ahead of any reply, so every header
+    # read goes through _rd_hdr(), which logs and skips them. All of this is
+    # inert unless _da_log_on is set in setup_env.
+    _da_log_on = False
+    _da_log_pump_next = False
+    _hdr_stash = None
+    DA_LOG_MAX_MSG = 4096
+
+    def _da_log_usb_requested(self) -> bool:
+        if not self._android_usb():
+            return False
+        try:
+            from com.bareflash.app import UsbBridge as _UsbBridge
+            return bool(_UsbBridge.isDaLogUsbEnabled())
+        except Exception:
+            return False
+
+    def _da_msg_body(self, hdr) -> bool:
+        """True if `hdr` (12 bytes already read) was a DA log packet; its
+        payload is then consumed and logged. Otherwise nothing is touched."""
+        if not self._da_log_on or len(hdr) != 12:
+            return False
+        magic, dtype, plen = unpack("<III", hdr)
+        if (magic != 0xFEEEEEEF or dtype != self.data_type.DT_MESSAGE
+                or plen > self.DA_LOG_MAX_MSG):
+            return False
+        body = self.usbread(plen, maxtimeout=2000) if plen else b""
+        if len(body) < plen:
+            self.warning(f"[xflash] DA log packet truncated: {len(body)} of {plen} bytes")
+        raw = bytes(body[4:] if len(body) >= 4 else body)
+        text = raw.decode("ascii", "replace").replace("\x00", "").strip()
+        if text:
+            self._applog_event("I", f"[DA] {text}")
+            if ("MBps" in text or "SPEED DUMP" in text or "DUMP END" in text):
+                print(f"[xflash] DA: {text}")
+        return True
+
+    def _rd_hdr(self, maxtimeout=None):
+        """Read one 12-byte protocol header, skipping DA log packets."""
+        hdr = b""
+        for _ in range(512):
+            if self._hdr_stash is not None:
+                hdr, self._hdr_stash = self._hdr_stash, None
+            elif maxtimeout is None:
+                hdr = self.usbread(12)
+            else:
+                hdr = self.usbread(12, maxtimeout=maxtimeout)
+            if self._da_msg_body(hdr):
+                continue
+            return hdr
+        return hdr
+
+    def _da_log_pump(self, wait_ms=20):
+        """Before the host writes a command: take any log packet the DA has
+        queued, so the DA is never left blocked on its USB IN while we send."""
+        if not self._da_log_on:
+            return
+        for _ in range(32):
+            hdr = self.usbread(12, maxtimeout=wait_ms)
+            if len(hdr) != 12:
+                return
+            if not self._da_msg_body(hdr):
+                # A real reply that arrived early: keep it for the next reader.
+                self._hdr_stash = bytes(hdr)
+                return
+
     def _da_report_windows(self) -> bool:
         """Settings -> Experimental -> "Larger read frames". True makes setup_env
         report system_os=Windows. Always False off Android or if the bridge
@@ -227,6 +296,9 @@ class DAXFlash(metaclass=LogBase):
                 length = 4
         else:
             length = len(data)
+        if self._da_log_on:
+            self._da_log_pump()
+            self._da_log_pump_next = True
         tmp = pack("<III", self.cmd.MAGIC, datatype, length)
         if self.usbwrite(tmp):
             return self.usbwrite(data)
@@ -234,7 +306,7 @@ class DAXFlash(metaclass=LogBase):
 
     def xread(self):
         try:
-            hdr = self.usbread(4 + 4 + 4)
+            hdr = self._rd_hdr()
             magic, _, length = unpack("<III", hdr)
         except Exception as err:
             self.error(f"xread error: {str(err)}")
@@ -254,11 +326,11 @@ class DAXFlash(metaclass=LogBase):
         return data
 
     def status(self):
-        hdr = self.usbread(4 + 4 + 4)
+        hdr = self._rd_hdr()
         if len(hdr) != 12:
             # ZLP after a max-packet-aligned payload, or a late frame:
             # one bounded retry before failing soft.
-            hdr = self.usbread(4 + 4 + 4, maxtimeout=2000)
+            hdr = self._rd_hdr(2000)
         if len(hdr) != 12:
             # A short/empty header here used to hit unpack("<III", hdr)
             # directly, which raises "unpack requires a buffer of 12
@@ -302,6 +374,11 @@ class DAXFlash(metaclass=LogBase):
     def send_param(self, params):
         if isinstance(params, bytes):
             params = [params]
+        if self._da_log_pump_next:
+            # Once per command (not per write frame): its "Enter cmd" log line
+            # is queued right now.
+            self._da_log_pump_next = False
+            self._da_log_pump()
         for param in params:
             pkt = pack("<III", self.cmd.MAGIC, self.data_type.DT_PROTOCOL_FLOW, len(param))
             if self.usbwrite(pkt):
@@ -926,7 +1003,7 @@ class DAXFlash(metaclass=LogBase):
                 # data frame's header, kept for readflash.
                 self._pending_read_hdr = None
                 self._pending_read_payload = None
-                hdr = self.usbread(12, maxtimeout=400)
+                hdr = self._rd_hdr(400)
                 if len(hdr) == 12:
                     magic, _, plen_ = unpack("<III", hdr)
                     if magic != 0xFEEEEEEF:
@@ -1103,12 +1180,16 @@ class DAXFlash(metaclass=LogBase):
                     self._pending_read_hdr = None
                     hdr_src = "pending" if status is not None else "usbread"
                     if status is None:
-                        status = self.usbread(12, maxtimeout=hdr_wait)
+                        status = self._rd_hdr(hdr_wait)
+                    elif self._da_msg_body(status):
+                        # Native handed back a DA log packet: it is consumed
+                        # now, so go round again and read the next header.
+                        continue
                     if len(status) != 12:
                         # ZLP after a payload that was a multiple of
                         # wMaxPacketSize. Native skips ZLPs; one retry
                         # catches a late next-frame header.
-                        status = self.usbread(12, maxtimeout=hdr_wait)
+                        status = self._rd_hdr(hdr_wait)
                     if len(status) != 12:
                         self.warning(
                             f"[xflash] no frame header at {hex(bytesread)} of {hex(length)}"
@@ -1246,10 +1327,10 @@ class DAXFlash(metaclass=LogBase):
                 # command does not eat a stale frame. Skipped when the DA's
                 # terminating status frame was already consumed above.
                 if not terminated:
-                    fstatus = self.usbread(12, maxtimeout=5000)
+                    fstatus = self._rd_hdr(5000)
                     if len(fstatus) != 12:
                         self.warning(f"Timeout or short read on final ack: {hex(len(fstatus))} bytes; resyncing")
-                        fstatus = self.usbread(12, maxtimeout=15000)
+                        fstatus = self._rd_hdr(15000)
                         if len(fstatus) != 12:
                             self.usbread(12, maxtimeout=250)
                             fstatus = b""
@@ -1507,6 +1588,17 @@ class DAXFlash(metaclass=LogBase):
         if self.xsend(self.cmd.SETUP_ENVIRONMENT):
             da_log_level = int(self.daconfig.uartloglevel)
             log_channel = 1
+            self._da_log_on = False
+            self._da_log_pump_next = False
+            self._hdr_stash = None
+            if self._da_log_usb_requested():
+                # Diagnostic: DA log over USB (channel 2). INFO or more verbose
+                # is needed for the DA's speed dump to be printed at all.
+                log_channel = 2
+                da_log_level = min(da_log_level, 2)
+                self._da_log_on = True
+                self._applog_event("I", "[xflash] setup_env: DA log over USB on "
+                                        "(Settings -> Experimental)")
             # The MT6765 XFlash DA appears to pick its READ_DATA frame from this:
             # 64 KiB when told Linux, 2 MiB otherwise (docs/USB_PERFORMANCE.md;
             # not yet confirmed on hardware). The app switch is off by default.
