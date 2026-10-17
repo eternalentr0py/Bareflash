@@ -601,6 +601,10 @@ object UsbBridge {
     @JvmStatic
     fun isDaLogUsbEnabled(): Boolean = UsbTuning.daLogUsb.value
 
+    /** Settings -> Experimental. Read by the MediaTek DA setup (xflash_lib.setup_env). */
+    @JvmStatic
+    fun isDaLogDebugEnabled(): Boolean = UsbTuning.daLogDebug.value
+
     private val framesInfo = IntArray(7)
     private val framesHdr = ByteArray(16)
 

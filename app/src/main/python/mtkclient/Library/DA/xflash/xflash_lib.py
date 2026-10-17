@@ -147,6 +147,15 @@ class DAXFlash(metaclass=LogBase):
         except Exception:
             return False
 
+    def _da_log_debug_requested(self) -> bool:
+        if not self._android_usb():
+            return False
+        try:
+            from com.bareflash.app import UsbBridge as _UsbBridge
+            return bool(_UsbBridge.isDaLogDebugEnabled())
+        except Exception:
+            return False
+
     def _da_msg_body(self, hdr) -> bool:
         """True if `hdr` (12 bytes already read) was a DA log packet; its
         payload is then consumed and logged. Otherwise nothing is touched."""
@@ -1625,7 +1634,9 @@ class DAXFlash(metaclass=LogBase):
                 # Diagnostic: DA log over USB (channel 2). INFO or more verbose
                 # is needed for the DA's speed dump to be printed at all.
                 log_channel = 2
-                da_log_level = min(da_log_level, 2)
+                # Level 1 (debug) adds the DA's eMMC "SET_CLK ..." lines; the
+                # DA prints those only when its level is 1 or lower.
+                da_log_level = 1 if self._da_log_debug_requested() else min(da_log_level, 2)
                 self._da_log_on = True
                 self._applog_event("I", "[xflash] setup_env: DA log over USB on "
                                         "(Settings -> Experimental)")

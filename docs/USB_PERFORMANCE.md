@@ -123,6 +123,34 @@ receiving side.
 Applies only to XFlash (V5) DAs and takes effect when the DA is next loaded.
 Leave it off for writes. If a read fails or hangs, turn it off and reconnect.
 
+### Results on the A10s (MT6765, `GD6BMB` eMMC), 1.0.1-beta.4
+
+Two reads of the `vendor` partition (448 MiB), both with larger read frames
+(2 MiB) and DA log over USB on. The DA's own speed dump:
+
+| Run | `[Storage Read]` | `[USB Write]` | `[Overview]` | Host: header+status wait / payload |
+|---|---|---|---|---|
+| 1 | 23.06 s, 19 MBps | 18.80 s, 23 MBps | 23.15 s, 19 MBps | 21.9 ms / 80.7 ms per frame |
+| 2 | 22.84 s, 19 MBps | 18.59 s, 24 MBps | 22.93 s, 19 MBps | 21.8 ms / 79.8 ms per frame |
+
+Reading the storage took almost the whole transfer, and the USB send finished
+about 4.3 s earlier and spent that time waiting: the DA's USB thread idles until
+the reader thread has filled the next buffer, which is the ~21.8 ms per frame the
+host sees as header+status wait. So on this read the eMMC read is the slower
+stage, with the USB send close behind at 24-25 MiB/s while sending (the link
+itself carried about 49 MiB/s in the other direction during writes).
+
+An earlier `userdata` read without the DA log had a header wait of 3.4 ms per
+frame at 22.9 MiB/s, so the storage stage was faster there. The DA prints
+nothing during the data loop, so the log switch should not be the cause; a
+different partition, or the eMMC itself, is more likely. Reading the same
+partition with the switch off and on settles it.
+
+The *Verbose DA log (debug)* switch asks the DA for level 1, which adds its
+eMMC clock and bus-mode lines (`[SDn] SET_CLK(...kHz): SCLK(...) MODE(...)
+DDR(...)`) to the log. These are printed only at level 1 or lower. It produces
+much more output, so use it on a small read.
+
 ## Diagnosing a slow or failing read
 
 Settings → Logging, search `xflash`:

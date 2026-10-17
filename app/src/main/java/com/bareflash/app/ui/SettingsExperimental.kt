@@ -42,6 +42,7 @@ internal fun ExperimentalPage() {
     val fused by UsbTuning.fusedRead.collectAsStateWithLifecycle()
     val daWin by UsbTuning.daWindowsEnv.collectAsStateWithLifecycle()
     val daLog by UsbTuning.daLogUsb.collectAsStateWithLifecycle()
+    val daLogDbg by UsbTuning.daLogDebug.collectAsStateWithLifecycle()
     val busy by UsbTuning.busyWait.collectAsStateWithLifecycle()
     val hold by UsbTuning.holdClusters.collectAsStateWithLifecycle()
     val keeper by UsbTuning.boostKeeper.collectAsStateWithLifecycle()
@@ -114,6 +115,13 @@ internal fun ExperimentalPage() {
                 "first, and leave it off for writes. Applies from the next command.",
             daLog
         ) { UsbTuning.setDaLogUsb(it) }
+        SwitchRow(
+            "Verbose DA log (debug)",
+            "Only with \"DA log over USB\". Asks the DA for debug instead of info, which adds its eMMC clock " +
+                "and bus-mode lines (\"SET_CLK ...\") to Settings → Logging. Much more output, so use it on a " +
+                "small read only. Applies from the next command.",
+            daLogDbg
+        ) { UsbTuning.setDaLogDebug(it) }
 
         SectionLabel("Dump integrity")
         SwitchRow(
