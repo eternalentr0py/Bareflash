@@ -109,6 +109,12 @@ retries (up to 5 times, then one normal-timeout attempt). A 64-byte write is a
 single USB packet, so a timed-out attempt sent nothing and a retry cannot
 duplicate data. Larger writes are untouched.
 
+This covers every small write in the XFlash host code: `xsend`, `send_param`,
+the ACK writes, and the `boot_to` / `send_data` headers. The stage-2 upload is
+where it mattered on the A10s: the DA logs a line right after it reads the
+BOOT_TO parameters, ahead of reading the 12-byte `send_data` header, so that
+header write was the one that timed out.
+
 How to read the result: run a read of a few hundred MiB and compare the
 `[Storage Read]` and `[USB Write]` speeds. Whichever is near the host-measured
 MiB/s is the limit; if both are much higher, the limit is on the phone's

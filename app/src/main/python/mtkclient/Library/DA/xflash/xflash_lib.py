@@ -303,7 +303,7 @@ class DAXFlash(metaclass=LogBase):
             return -1
 
     def _usbwrite_retry(self, payload: bytes) -> bool:
-        if self.usbwrite(payload):
+        if self._da_write(payload):
             return True
         if not self._android_usb():
             return False
@@ -314,7 +314,7 @@ class DAXFlash(metaclass=LogBase):
             time.sleep(0.002)
         except Exception:
             pass
-        return bool(self.usbwrite(payload))
+        return bool(self._da_write(payload))
 
     def xsend(self, data, datatype=DataType.DT_PROTOCOL_FLOW, is64bit: bool = False):
         if isinstance(data, int):
@@ -533,7 +533,7 @@ class DAXFlash(metaclass=LogBase):
 
     def send_data(self, data):
         pkt2 = pack("<III", self.cmd.MAGIC, self.data_type.DT_PROTOCOL_FLOW, len(data))
-        if self.usbwrite(pkt2):
+        if self._da_write(pkt2):
             bytestowrite = len(data)
             maxoutsize = self.mtk.port.cdc.EP_OUT.wMaxPacketSize
             pos = 0
@@ -612,8 +612,8 @@ class DAXFlash(metaclass=LogBase):
             if self.status() == 0:
                 param = pack("<QQ", addr, len(da))
                 pkt1 = pack("<III", self.cmd.MAGIC, self.data_type.DT_PROTOCOL_FLOW, len(param))
-                if self.usbwrite(pkt1):
-                    if self.usbwrite(param):
+                if self._da_write(pkt1):
+                    if self._da_write(param):
                         if self.send_data(da):
                             # if addr == 0x68000000:
                             if addr == self.extensions_address:
