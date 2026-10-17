@@ -163,6 +163,23 @@ DDR(...)`) to the log. These are printed only at level 1 or lower. It produces
 much more output, so use it on a small read: the DA's DRAM calibration alone
 prints about 700 lines in a row, and the host now skips any number of them.
 
+## USB send path diagnostic (DMA vs PIO)
+
+The MT6765 XFlash DA2's bulk-IN send routine checks a byte at `0x40053978` in
+its own RAM: if 1, it hands up to `0xfc00` (64512) bytes to the controller as
+one DMA descriptor; if not 1, it falls back to sending 512 bytes at a time in
+software, with a setup pass before each chunk. The flag starts at 0 at DA init
+and is set to 1 only by a specific USB endpoint-configuration routine; which
+path actually runs at read time was not confirmed from static analysis alone.
+
+Every `r` command now reads this flag once, right after `get_packet_length`,
+using the extension's own `readmem` (the same command path that already
+fetches the eMMC info) and logs it: `[xflash] usb_tag flag @0x40053978 = 0x..
+(DMA path | PIO fallback)`. `0x0` would point at this as a likely cause of the
+read-speed ceiling (the PIO loop's per-chunk overhead, 4096 chunks for a 2 MiB
+frame against about 33 DMA descriptors); `0x1` would rule it out, and the
+limit would be elsewhere in the DA's USB transmit path.
+
 ## Diagnosing a slow or failing read
 
 Settings → Logging, search `xflash`:

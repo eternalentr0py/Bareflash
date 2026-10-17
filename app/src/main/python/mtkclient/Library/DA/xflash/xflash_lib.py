@@ -946,6 +946,23 @@ class DAXFlash(metaclass=LogBase):
                 return "PMT"
         return 0
 
+    def _log_usb_tag_flag(self):
+        """One-shot diagnostic: the MT6765 XFlash DA2 picks its bulk-IN send
+        routine (large DMA-descriptor sends up to 0xfc00 bytes vs a 512-byte
+        software-PIO fallback) based on a byte at 0x40053978, initialised to
+        0 and set to 1 only by a USB endpoint-config routine run during the
+        DA's own init. Read it once via the extension's readmem (same
+        command path as the EMMC info already fetched) to see which path
+        this DA is actually using."""
+        try:
+            val = self.xft.readmem(0x40053978, 1)
+            v = val[0] if isinstance(val, list) else val
+            self._applog_event("I", f"[xflash] usb_tag flag @0x40053978 = {hex(v)}"
+                                     f" ({'DMA path' if v == 1 else 'PIO fallback' if v == 0 else 'unexpected'})")
+            print(f"[xflash] usb_tag flag @0x40053978 = {hex(v)}")
+        except Exception as err:
+            self.warning(f"[xflash] usb_tag flag read failed: {err}")
+
     def get_packet_length(self):
         cached = getattr(self, "_plen_cache", None)
         if cached is not None:
@@ -966,6 +983,7 @@ class DAXFlash(metaclass=LogBase):
                 self.warning(f"get_packet_length extra status: {self.eh.status(status)}")
             print(f"[xflash] get_packet_length: write={hex(plen.write_packet_length)} "
                   f"read={hex(plen.read_packet_length)}")
+            self._log_usb_tag_flag()
             self._plen_cache = plen
             return plen
         return None
