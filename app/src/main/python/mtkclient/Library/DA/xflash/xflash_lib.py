@@ -179,7 +179,10 @@ class DAXFlash(metaclass=LogBase):
     def _rd_hdr(self, maxtimeout=None):
         """Read one 12-byte protocol header, skipping DA log packets."""
         hdr = b""
-        for _ in range(512):
+        # No small cap: at debug level the DA's DRAM calibration alone prints
+        # about 700 lines in a row, and giving up part-way would hand a log
+        # packet to the caller as if it were a reply.
+        for _ in range(200000):
             if self._hdr_stash is not None:
                 hdr, self._hdr_stash = self._hdr_stash, None
             elif maxtimeout is None:
@@ -196,7 +199,7 @@ class DAXFlash(metaclass=LogBase):
         queued, so the DA is never left blocked on its USB IN while we send."""
         if not self._da_log_on:
             return
-        for _ in range(32):
+        for _ in range(2000):
             hdr = self.usbread(12, maxtimeout=wait_ms)
             if len(hdr) != 12:
                 return

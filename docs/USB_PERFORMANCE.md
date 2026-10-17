@@ -136,20 +136,32 @@ Two reads of the `vendor` partition (448 MiB), both with larger read frames
 Reading the storage took almost the whole transfer, and the USB send finished
 about 4.3 s earlier and spent that time waiting: the DA's USB thread idles until
 the reader thread has filled the next buffer, which is the ~21.8 ms per frame the
-host sees as header+status wait. So on this read the eMMC read is the slower
-stage, with the USB send close behind at 24-25 MiB/s while sending (the link
-itself carried about 49 MiB/s in the other direction during writes).
+host sees as header+status wait.
 
-An earlier `userdata` read without the DA log had a header wait of 3.4 ms per
-frame at 22.9 MiB/s, so the storage stage was faster there. The DA prints
-nothing during the data loop, so the log switch should not be the cause; a
-different partition, or the eMMC itself, is more likely. Reading the same
-partition with the switch off and on settles it.
+**That is an effect of the DA log, not the normal case.** Reads with the DA log
+off, on the same phone, show a header+status wait of only 3.4 ms per frame
+(`userdata`, 2.2 GiB region: 22.9 MiB/s; `boot`, 32 MiB: 22.9 MiB/s, payload
+80.6 ms per frame = 24.8 MiB/s while receiving). Every read with the log on
+shows ~21.8 ms instead, with the same ~80 ms payload time. So with the log on
+the DA starts each frame about 18 ms later (cause not identified; the log
+wraps the DA's USB writes in a lock), and the DA's speed-dump figures taken
+with the log on understate the storage stage. With the log off, storage keeps
+up and the limit is the DA's USB transmit, about 24.8 MiB/s, while the same
+link carried about 49 MiB/s in the other direction during writes.
+
+### eMMC mode (from the debug-level log)
+
+The DA brings the eMMC up in High-Speed DDR mode (`SET_CLK(52000kHz):
+SCLK(50000kHz) MODE(2) DDR(1)`, 8-bit bus, `Max.Speed: 52000 kHz`). That is a
+theoretical ~95 MiB/s, well above the ~24 MiB/s seen, so the eMMC bus clock is
+not what limits reads. The DA has no HS200/HS400 strings, so it cannot go
+faster than this mode anyway.
 
 The *Verbose DA log (debug)* switch asks the DA for level 1, which adds its
 eMMC clock and bus-mode lines (`[SDn] SET_CLK(...kHz): SCLK(...) MODE(...)
 DDR(...)`) to the log. These are printed only at level 1 or lower. It produces
-much more output, so use it on a small read.
+much more output, so use it on a small read: the DA's DRAM calibration alone
+prints about 700 lines in a row, and the host now skips any number of them.
 
 ## Diagnosing a slow or failing read
 
