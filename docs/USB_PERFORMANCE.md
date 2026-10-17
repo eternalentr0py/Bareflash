@@ -100,6 +100,15 @@ sends each log line as a packet in the normal stream: `0xFEEEEEEF`, type 2
 each command the host also picks up any queued log packet, so the DA is not
 left waiting on its USB IN while the host sends.
 
+That pickup can miss a log line the DA queues a little later (seen on the
+A10s right after `init_dram`): the DA then blocks sending it, stops reading
+OUT, and the host's next command header times out after 4 s with `sent=0`.
+So command headers and other writes of up to 64 bytes use a 300 ms timeout
+while the log is on; on a timeout the host reads the pending log lines and
+retries (up to 5 times, then one normal-timeout attempt). A 64-byte write is a
+single USB packet, so a timed-out attempt sent nothing and a retry cannot
+duplicate data. Larger writes are untouched.
+
 How to read the result: run a read of a few hundred MiB and compare the
 `[Storage Read]` and `[USB Write]` speeds. Whichever is near the host-measured
 MiB/s is the limit; if both are much higher, the limit is on the phone's

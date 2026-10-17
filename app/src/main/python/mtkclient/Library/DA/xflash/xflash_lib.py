@@ -196,6 +196,36 @@ class DAXFlash(metaclass=LogBase):
                 self._hdr_stash = bytes(hdr)
                 return
 
+    def _da_write(self, data) -> bool:
+        """usbwrite for headers and other small command-phase writes.
+
+        With the DA log on, the DA can be blocked sending a log line the host
+        has not read yet (the line may be queued after the short pump window).
+        It then stops reading OUT, and a plain write waits out its whole
+        timeout (4 s) and fails with sent=0. For writes of up to 64 bytes
+        (one USB packet, so a timeout means nothing was sent and a retry
+        cannot duplicate data) use a short timeout, read the pending log
+        lines, and try again. Everything else, and everything with the DA
+        log off, is a plain usbwrite."""
+        if not self._da_log_on or len(data) > 64:
+            return self.usbwrite(data)
+        cdc = getattr(getattr(self.mtk, "port", None), "cdc", None)
+        saved = getattr(cdc, "timeout", None)
+        try:
+            for _ in range(5):
+                if cdc is not None:
+                    cdc.timeout = 300
+                ok = self.usbwrite(data)
+                if cdc is not None:
+                    cdc.timeout = saved
+                if ok:
+                    return True
+                self._da_log_pump(wait_ms=250)
+        finally:
+            if cdc is not None:
+                cdc.timeout = saved
+        return self.usbwrite(data)
+
     def _da_report_windows(self) -> bool:
         """Settings -> Experimental -> "Larger read frames". True makes setup_env
         report system_os=Windows. Always False off Android or if the bridge
@@ -300,8 +330,8 @@ class DAXFlash(metaclass=LogBase):
             self._da_log_pump()
             self._da_log_pump_next = True
         tmp = pack("<III", self.cmd.MAGIC, datatype, length)
-        if self.usbwrite(tmp):
-            return self.usbwrite(data)
+        if self._da_write(tmp):
+            return self._da_write(data)
         return False
 
     def xread(self):
@@ -381,7 +411,7 @@ class DAXFlash(metaclass=LogBase):
             self._da_log_pump()
         for param in params:
             pkt = pack("<III", self.cmd.MAGIC, self.data_type.DT_PROTOCOL_FLOW, len(param))
-            if self.usbwrite(pkt):
+            if self._da_write(pkt):
                 length = len(param)
                 pos = 0
                 # 1 MiB per USB call on Android: libusb splits it into 16 KiB
@@ -392,7 +422,7 @@ class DAXFlash(metaclass=LogBase):
                 usb_chunk = 0x100000 if self._android_usb() else 0x4000
                 while length > 0:
                     dsize = min(length, usb_chunk)
-                    if not self.usbwrite(param[pos:pos + dsize]):
+                    if not self._da_write(param[pos:pos + dsize]):
                         break
                     pos += dsize
                     length -= dsize
