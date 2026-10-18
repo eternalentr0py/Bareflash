@@ -17,6 +17,7 @@ enum class LiveEngine(val label: String, val color: Int) {
     Mtk("MediaTek", 0xFF5AA9FF.toInt()),
     Qdl("Qualcomm", 0xFFFF8A3D.toInt()),
     Samsung("Samsung", 0xFF7BD88F.toInt()),
+    Adb("ADB / Fastboot", 0xFFB48CFF.toInt()),
     App("Bareflash", 0xFF5AA9FF.toInt()),
 }
 

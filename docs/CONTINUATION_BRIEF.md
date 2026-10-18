@@ -26,7 +26,7 @@ Owner's requirements for ADB/fastboot, stated in his words, condensed:
 1. **Push changes directly to the GitHub repo (`main`).** Do not hand code files over in chat.
 2. **After each implementation step: update this brief, commit it, and send the owner the brief as a file in chat.** (This is the one file he wants in chat each time.)
 3. **After a *successful* push, trigger the "Build & Release" workflow, then stop and reply.** Do not wait for the build to finish. Always check the push result first: a dispatch builds whatever is on `main`, so dispatching after a failed push builds old code (this happened once in revision 1 and the run was cancelled).
-4. The owner supplies a GitHub token (a PAT; the current one can push code and dispatch workflows but **cannot modify `.github/workflows/*`** because it lacks the `workflow` scope) in the chat. **Never write the token into any file, commit, remote URL, git config, or memory.** Use it only per command, e.g. `git -c http.extraHeader="Authorization: Basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" ...` and `curl -H "Authorization: Bearer $TOKEN" ...`. If the token is expired or lacks scope, ask for a new one.
+4. The owner supplies a GitHub token (a PAT) in the chat. As of revision 2.1 it has the `workflow` scope, so `.github/workflows/*` can be changed, and it can read Actions logs and dispatch workflows. **Never write the token into any file, commit, remote URL, git config, or memory.** Use it only per command, e.g. `git -c http.extraHeader="Authorization: Basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" ...` and `curl -H "Authorization: Bearer $TOKEN" ...`. If the token is expired or lacks scope, ask for a new one.
 5. Release convention so far: pre-releases tagged `v1.0.1-beta.N`; v1.0.0 was the only stable. Trigger with workflow id `385272549` (Build & Release), `ref=main`, inputs `version` (e.g. `1.0.1-beta.7`), `prerelease=true`, optional `notes`. Tests workflow id `385272550` runs automatically on push to `main`.
 6. Be honest about what is and is not verified. Do not claim hardware or Gradle results that were not obtained.
 
@@ -86,6 +86,16 @@ Commit "Add :usbcore and :fastboot modules (native fastboot protocol, subtask 1)
 - `fastboot/tools/crosscheck-libsparse.sh` feeds planner output to Android's real `simg2img`; all three scenarios passed (byte-identical reassembly; passthrough identical).
 - **Not verified:** the Gradle/AGP build of the new modules, the Android app build with them, and any real device. These pieces were written from AOSP documentation.
 
+## 4c. Revision 2.1: CI compile fix
+
+Both CI runs for revision 2 (Tests and Build & Release `1.0.1-beta.8`) failed with the same single error:
+`ConsoleViewModel.kt:1202: 'when' expression must be exhaustive. Add the 'ADB_FASTBOOT' branch`.
+`liveEngineFor(m: EngineMode)` maps a mode to a `LiveEngine` (label and accent for live notifications) and had no case for the new mode.
+
+Fix: added `LiveEngine.Adb("ADB / Fastboot", 0xFFB48CFF)` in `live/LiveModels.kt` and `EngineMode.ADB_FASTBOOT -> LiveEngine.Adb` in `ConsoleViewModel.liveEngineFor`. A scripted audit of every `when` containing a `BROKKR ->` branch (and every `LiveEngine` `when`) found no other non-exhaustive one. Kotlin reported only that one error in each log, so no other compile error was visible; later Gradle stages (lint, R8, packaging) had not run yet.
+
+Lesson for future steps: every new `EngineMode` or `LiveEngine` value needs every exhaustive `when` updated; grep for `BROKKR ->` to find them.
+
 ## 5. Decisions and rationale
 
 - Protocols in **pure Kotlin behind `UsbTransport`** (revised from an earlier idea of C on `bfusb`): memory-safe, JVM-testable with fakes, easiest to audit. A libusb-backed transport can be added later if Android's `UsbDeviceConnection` throughput or cancellation is not good enough.
@@ -128,8 +138,12 @@ Gotchas seen: `internal` symbols need `-Xfriend-paths` when tests are compiled s
 
 | Revision | Commit | Build & Release | Notes |
 |---|---|---|---|
-| 1 | "Add :usbcore and :fastboot modules (native fastboot protocol, subtask 1)" | first dispatch of `1.0.1-beta.7` ran on old `main` (push had been rejected) and was cancelled; re-dispatched after the corrected push | First run of the new Gradle modules in CI; if Tests or Build fails, fix Gradle wiring first. |
+| 1 | "Add :usbcore and :fastboot modules (native fastboot protocol, subtask 1)" `f7552fb` | Tests green; Build & Release `1.0.1-beta.7` green | A first dispatch ran on old `main` (push had been rejected for a workflow-file change) and was cancelled; re-dispatched after the corrected push. |
+| 2 | "Add Android USB transport and ADB/fastboot mode skeleton (subtask 2)" `6426ac4` | Tests **failed**, Build & Release `1.0.1-beta.8` **failed** (same compile error in both) | Non-exhaustive `when` in `ConsoleViewModel.liveEngineFor`. |
+| 2.1 | "Fix non-exhaustive EngineMode when (LiveEngine.Adb)" | dispatched as `1.0.1-beta.8` (not yet checked) | Result not awaited, per owner. If it fails, the owner pastes logs. |
 
 ## 9. Next step
 
-Check the result of the revision-1 runs in the Actions tab (Tests and Build & Release). Fix any Gradle/CI failure from the new modules. Then start subtask 2.
+1. Owner reports the result of the revision-2.1 Tests and Build & Release runs (paste logs if they fail; fix compile errors first).
+2. Ask the owner to test on hardware if possible: plug a phone in fastboot mode (and one with USB debugging) via OTG, check Devices lists it, Grant works, Connect shows variables, reboot works, and whether the attach launch opens the app in ADB mode.
+3. Start subtask 3: `:adb` core (see section 6).

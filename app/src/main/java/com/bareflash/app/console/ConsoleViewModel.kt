@@ -1203,6 +1203,7 @@ class ConsoleViewModel(app: Application) : AndroidViewModel(app) {
         EngineMode.MTK -> LiveEngine.Mtk
         EngineMode.QDL -> LiveEngine.Qdl
         EngineMode.BROKKR -> LiveEngine.Samsung
+        EngineMode.ADB_FASTBOOT -> LiveEngine.Adb
     }
 
     private fun liveDevice(): String =
