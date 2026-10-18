@@ -42,7 +42,7 @@ internal fun AboutPage() {
         )
 
         HorizontalDivider()
-        Text("Three modes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text("Four modes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         ModeEntry(
             EngineMode.MTK.label,
             "Works with MediaTek chips in BootROM, Preloader and DA mode: partition read and write, erase, " +
@@ -57,6 +57,12 @@ internal fun AboutPage() {
             EngineMode.BROKKR.label,
             "Flashes Samsung devices in Download mode from .tar and .md5 firmware packages, over USB or " +
                 "wirelessly for watches, with per-partition progress that keeps running while the screen is off."
+        )
+        ModeEntry(
+            EngineMode.ADB_FASTBOOT.label,
+            "Talks to Android devices over USB OTG using its own native ADB and fastboot code, with no bundled " +
+                "binaries and no network access. Fastboot variables and reboot work today; ADB, flashing, a " +
+                "file manager and screen mirroring are being added step by step."
         )
 
         HorizontalDivider()

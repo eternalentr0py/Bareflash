@@ -16,13 +16,13 @@ The tool grew from that one recovery into a general flashing application.
 
 ## What it can do
 
-The interface has three modes. The bottom bar switches the command catalog, USB filter, and tabs. The switch is locked while a job is running.
+The interface has four modes. The bottom bar switches the command catalog, USB filter, and tabs. The switch is locked while a job is running.
 
-| | MediaTek | Qualcomm | Samsung |
-|---|---|---|---|
-| Target | BROM, Preloader, Download Agent | EDL 9008 (Sahara / Firehose) | Download mode (Odin protocol) |
-| Engine | [mtkclient](https://github.com/bkerler/mtkclient) via Chaquopy | [qdl](https://github.com/linux-msm/qdl) via JNI | [Brokkr Flash](https://github.com/Gabriel2392/brokkr-flash) via JNI |
-| Tabs | Console, Commands, Dumps, Settings | Console, Commands, Session, Dumps, Settings | Flash, Progress, Devices, Log, Settings |
+| | MediaTek | Qualcomm | Samsung | ADB / Fastboot |
+|---|---|---|---|---|
+| Target | BROM, Preloader, Download Agent | EDL 9008 (Sahara / Firehose) | Download mode (Odin protocol) | Any Android device with USB debugging on, or in fastboot mode |
+| Engine | [mtkclient](https://github.com/bkerler/mtkclient) via Chaquopy | [qdl](https://github.com/linux-msm/qdl) via JNI | [Brokkr Flash](https://github.com/Gabriel2392/brokkr-flash) via JNI | Own pure-Kotlin ADB and fastboot ([`:usbcore`](usbcore/README.md), [`:fastboot`](fastboot/README.md)), no bundled binaries |
+| Tabs | Console, Commands, Dumps, Settings | Console, Commands, Session, Dumps, Settings | Flash, Progress, Devices, Log, Settings | Devices, Fastboot, Log, Settings (more are planned) |
 
 ### MediaTek
 
@@ -53,6 +53,14 @@ The Session tab sets the programmer, firmware folder, storage type, target seria
 ### Samsung (Odin)
 
 Download mode can flash official or compatible images using the Odin protocol. Progress, attached devices, and a log are separate tabs. A Dynamic Island status pill follows flashes in every mode, including Samsung.
+
+### ADB and fastboot (in progress)
+
+A native ADB and fastboot client is being built in steps, with no bundled `adb` or `fastboot` binaries and no network access. The other device is found by its USB interface (class 0xFF, subclass 0x42), not by vendor, so any manufacturer works.
+
+What exists today: the fastboot protocol (commands, `getvar`, download, flash with Android sparse-image splitting, reboot), the Android USB transport, and a Devices / Fastboot / Log UI that lists devices, asks for USB access, connects to a device in fastboot mode, shows its variables and offers the reboot menu. Flashing and erasing are not in the UI yet. The ADB client, a Console and Commands tab, a file manager, an app manager, logcat and screen mirroring are planned; see [docs/ADB_FASTBOOT_ROADMAP.md](docs/ADB_FASTBOOT_ROADMAP.md).
+
+The protocol code is unit-tested against fake devices on a plain JVM. It has not yet been run against a real phone.
 
 ### Shared behaviour
 
@@ -89,6 +97,7 @@ Current engineering status:
 | MTK engine | Carried forward from the original recovery app. The package rename has not been recompiled end to end. |
 | Mode switch, UI, QDL catalog, Session tab, Samsung Odin UI | Implemented. |
 | QDL native engine | Vendored and desktop-tested. Not yet proven on a device. See [docs/QDL_ENGINE.md](docs/QDL_ENGINE.md). |
+| ADB / fastboot | Fastboot protocol and Android USB transport written from the AOSP specification and unit-tested against fake devices. Not yet run on a real device. ADB client not started. See [docs/ADB_FASTBOOT_ROADMAP.md](docs/ADB_FASTBOOT_ROADMAP.md). |
 
 Which hardware has actually been tested, and what is still open before a stable release, is tracked in [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md). Until that list is clear, treat published builds as pre-releases.
 

@@ -49,6 +49,9 @@ class MainActivity : ComponentActivity() {
     // Samsung (Odin) mode owns its own state and USB handling.
     private val samsung: com.bareflash.app.samsung.SamsungViewModel by viewModels()
 
+    // ADB / fastboot mode owns its own state and USB handling too.
+    private val adbfb: com.bareflash.app.adbfb.AdbFbViewModel by viewModels()
+
     // A USB-attach launch that arrived before the disclaimer was accepted.
     private var deferredIntent: Intent? = null
 
@@ -117,6 +120,7 @@ class MainActivity : ComponentActivity() {
         }
         LaunchedEffect(engine) {
             samsung.setActive(engine == EngineMode.BROKKR)
+            adbfb.setActive(engine == EngineMode.ADB_FASTBOOT)
         }
         CompositionLocalProvider(LocalAccessibility provides settings.accessibility) {
             BareflashTheme(settings.appearance, settings.look, engine, settings.accessibility) {
@@ -137,7 +141,9 @@ class MainActivity : ComponentActivity() {
                             settings = { SettingsScreen(vm) },
                             switchToConsole = vm.switchToConsole,
                             samsungVm = samsung,
-                            brokkr = { tab -> com.bareflash.app.ui.samsung.BrokkrTabs(samsung, tab) }
+                            brokkr = { tab -> com.bareflash.app.ui.samsung.BrokkrTabs(samsung, tab) },
+                            adbfbVm = adbfb,
+                            adbfb = { tab -> com.bareflash.app.ui.adbfb.AdbFbTabs(adbfb, tab) }
                         )
                     }
                     if (tutorial) {
@@ -168,12 +174,18 @@ class MainActivity : ComponentActivity() {
             deferredIntent = i
             return
         }
-        // A Samsung phone in download mode launches us too; hand it to the Samsung engine.
         val dev: android.hardware.usb.UsbDevice? =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                 i.getParcelableExtra(UsbManager.EXTRA_DEVICE, android.hardware.usb.UsbDevice::class.java)
             else @Suppress("DEPRECATION") i.getParcelableExtra(UsbManager.EXTRA_DEVICE)
-        if (dev?.vendorId == com.bareflash.app.samsung.BrokkrUsbTransport.SAMSUNG_VID) {
+        // An ADB or fastboot interface decides the mode whatever the vendor. This runs before the
+        // vendor checks below because Samsung and MediaTek phones expose ADB in normal use too.
+        if (dev != null && com.bareflash.app.adbfb.AdbFbUsb.isDebugDevice(dev)) {
+            vm.setMode(EngineMode.ADB_FASTBOOT)
+            adbfb.setActive(true)
+            adbfb.refreshDevices()
+        } else if (dev?.vendorId == com.bareflash.app.samsung.BrokkrUsbTransport.SAMSUNG_VID) {
+            // A Samsung phone in download mode launches us too; hand it to the Samsung engine.
             vm.setMode(EngineMode.BROKKR)
             samsung.setActive(true)
             samsung.refreshDevices()

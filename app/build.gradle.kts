@@ -155,6 +155,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
 
+    // Native ADB / fastboot protocol code. Pure Kotlin/JVM modules; :fastboot exposes
+    // :usbcore (the transport interface) through api(), so both are visible here.
+    implementation(project(":fastboot"))
+
     // JVM unit tests (app/src/test). Run with: ./gradlew testDebugUnitTest
     testImplementation("junit:junit:4.13.2")
 }

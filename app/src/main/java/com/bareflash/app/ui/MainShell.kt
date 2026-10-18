@@ -95,6 +95,7 @@ fun tabsFor(mode: com.bareflash.app.engine.EngineMode): List<Tab> = when (mode) 
     com.bareflash.app.engine.EngineMode.MTK -> listOf(Tab.Console, Tab.Commands, Tab.Dumps, Tab.Settings)
     com.bareflash.app.engine.EngineMode.QDL -> listOf(Tab.Console, Tab.Commands, Tab.Session, Tab.Dumps, Tab.Settings)
     com.bareflash.app.engine.EngineMode.BROKKR -> listOf(Tab.Flash, Tab.Progress, Tab.Devices, Tab.Log, Tab.Settings)
+    com.bareflash.app.engine.EngineMode.ADB_FASTBOOT -> listOf(Tab.AdbDevices, Tab.AdbFastboot, Tab.AdbLog, Tab.Settings)
 }
 
 enum class Tab(val label: String, val filled: ImageVector, val outlined: ImageVector) {
@@ -108,7 +109,12 @@ enum class Tab(val label: String, val filled: ImageVector, val outlined: ImageVe
     Flash("Flash", Icons.Filled.Bolt, Icons.Outlined.Bolt),
     Progress("Progress", Icons.Filled.Speed, Icons.Outlined.Speed),
     Devices("Devices", Icons.Filled.Usb, Icons.Outlined.Usb),
-    Log("Log", Icons.Filled.Description, Icons.Outlined.Description)
+    Log("Log", Icons.Filled.Description, Icons.Outlined.Description),
+
+    // ADB / fastboot mode
+    AdbDevices("Devices", Icons.Filled.Usb, Icons.Outlined.Usb),
+    AdbFastboot("Fastboot", Icons.Filled.Bolt, Icons.Outlined.Bolt),
+    AdbLog("Log", Icons.Filled.Description, Icons.Outlined.Description)
 }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
@@ -132,7 +138,9 @@ fun MainShell(
     settings: @Composable () -> Unit,
     switchToConsole: SharedFlow<Unit>? = null,
     samsungVm: com.bareflash.app.samsung.SamsungViewModel? = null,
-    brokkr: @Composable (Tab) -> Unit = {}
+    brokkr: @Composable (Tab) -> Unit = {},
+    adbfbVm: com.bareflash.app.adbfb.AdbFbViewModel? = null,
+    adbfb: @Composable (Tab) -> Unit = {}
 ) {
     var tabState by rememberSaveable { mutableStateOf(Tab.Console) }
     var showModes by rememberSaveable { mutableStateOf(false) }
@@ -145,7 +153,8 @@ fun MainShell(
     val mode by vm.mode.collectAsStateWithLifecycle()
     val samsungRun = samsungVm?.run?.collectAsStateWithLifecycle()?.value
     // One "busy" flag for both worlds: keeps the screen on and locks the mode switcher.
-    val running = consoleRunning || (samsungRun?.active == true)
+    val adbfbBusy = adbfbVm?.busy?.collectAsStateWithLifecycle()?.value == true
+    val running = consoleRunning || (samsungRun?.active == true) || adbfbBusy
     val tabs = remember(mode) { tabsFor(mode) }
     // Switching engines can remove the tab you are on (Session exists only in QDL, Flash only
     // for Samsung). Resolve it during composition so no frame ever draws a tab that does not
@@ -266,6 +275,7 @@ fun MainShell(
                             Tab.Dumps -> dumps()
                             Tab.Settings -> settings()
                             Tab.Flash, Tab.Progress, Tab.Devices, Tab.Log -> brokkr(t)
+                            Tab.AdbDevices, Tab.AdbFastboot, Tab.AdbLog -> adbfb(t)
                         }
                     }
                 }
@@ -300,7 +310,9 @@ fun MainShell(
                         // Samsung flashes report through their own view model; the island
                         // shows them exactly like a console job.
                         if (samsungVm != null) SamsungIsland(samsungVm, controller, islandModifier)
-                    } else {
+                    } else if (mode != com.bareflash.app.engine.EngineMode.ADB_FASTBOOT) {
+                        // ADB / fastboot has no island yet: the console island would show
+                        // MediaTek/Qualcomm state that does not apply to this mode.
                         DynamicIsland(vm, controller, islandModifier)
                     }
                 }

@@ -279,6 +279,7 @@ private fun MainPage(vm: ConsoleViewModel, onOpen: (Page) -> Unit) {
                 EngineMode.MTK -> "MediaTek is active. Handshake defaults are under MediaTek. QDL uses Session. Samsung uses Flash."
                 EngineMode.QDL -> "Qualcomm is active. Programmer and flash options are on Session. MediaTek settings do not apply."
                 EngineMode.BROKKR -> "Samsung is active. Package, PIT, and USB or wireless are on Flash."
+                EngineMode.ADB_FASTBOOT -> "ADB / fastboot is active. Devices, variables and the log have their own tabs. MediaTek settings do not apply."
             },
             style = MaterialTheme.typography.bodySmall,
             color = Nc.Muted,

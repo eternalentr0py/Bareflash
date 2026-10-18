@@ -36,6 +36,19 @@ enum class EngineMode(
         "Samsung \u00b7 Odin / Download mode",
         emptySet(),
         "Hold Volume Down + Volume Up while plugging in the cable, then confirm download mode."
+    ),
+    /**
+     * ADB and fastboot over USB OTG. Devices are recognised by USB interface
+     * (class 0xFF, subclass 0x42), not by vendor, so any manufacturer works and
+     * the vendor filter is empty on purpose, as for Samsung: the MediaTek/Qualcomm
+     * console must not touch these devices.
+     * [com.bareflash.app.adbfb.AdbFbViewModel] owns USB for this mode.
+     */
+    ADB_FASTBOOT(
+        "adbfb", "ADB", "ADB/FASTBOOT",
+        "ADB · Fastboot · Android debug protocols",
+        emptySet(),
+        "Turn on USB debugging on the other device, or boot it into fastboot mode, then connect via OTG."
     );
 
     companion object {

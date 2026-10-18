@@ -140,6 +140,7 @@ internal fun engineWord(mode: EngineMode): String = when (mode) {
     EngineMode.MTK -> "mtk"
     EngineMode.QDL -> "qdl"
     EngineMode.BROKKR -> "odin"
+    EngineMode.ADB_FASTBOOT -> "adb"
 }
 
 private fun lineColor(line: String, c: TerminalColors, byLevel: Boolean): Color {

@@ -477,7 +477,7 @@ class ConsoleViewModel(app: Application) : AndroidViewModel(app) {
         }
         override fun onAttached() {
             if (_running.value) return
-            if (_mode.value == EngineMode.BROKKR) return
+            if (_mode.value == EngineMode.BROKKR || _mode.value == EngineMode.ADB_FASTBOOT) return
             if (!tryClaimReconnect()) detectDevice()
         }
         override fun onDetached() {

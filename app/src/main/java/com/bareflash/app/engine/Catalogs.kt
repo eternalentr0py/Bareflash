@@ -14,7 +14,7 @@ object Catalogs {
     fun groups(mode: EngineMode): List<McGroup> = when (mode) {
         EngineMode.MTK -> McCatalog.groups
         EngineMode.QDL -> QdlCatalog.groups
-        EngineMode.BROKKR -> emptyList()
+        EngineMode.BROKKR, EngineMode.ADB_FASTBOOT -> emptyList()
     }
 
     fun all(mode: EngineMode): List<McCommand> = groups(mode).flatMap { it.commands }
@@ -33,13 +33,13 @@ object Catalogs {
     fun isKnown(mode: EngineMode, cmd: String): Boolean = when (mode) {
         EngineMode.MTK -> CommandRules.isKnownCommand(cmd)
         EngineMode.QDL -> QdlRules.isKnown(cmd)
-        EngineMode.BROKKR -> false
+        EngineMode.BROKKR, EngineMode.ADB_FASTBOOT -> false
     }
 
     fun isDestructive(mode: EngineMode, cmd: String): Boolean = when (mode) {
         EngineMode.MTK -> CommandRules.isDestructive(cmd)
         EngineMode.QDL -> QdlRules.isDestructive(cmd)
-        EngineMode.BROKKR -> false
+        EngineMode.BROKKR, EngineMode.ADB_FASTBOOT -> false
     }
 
     /** Category deck entries for [mode], "All" first. */
@@ -53,6 +53,6 @@ object Catalogs {
             NcCategory("Device control", "Device", "DEVICE", "Reset out of EDL and engine info."),
             NcCategory("Advanced", "Advanced", "ADVANCED", "RAM dumps, VIP digests, flash ZIPs, keystore.")
         )
-        EngineMode.BROKKR -> emptyList()
+        EngineMode.BROKKR, EngineMode.ADB_FASTBOOT -> emptyList()
     }
 }

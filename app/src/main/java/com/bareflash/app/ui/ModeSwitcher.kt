@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +55,7 @@ internal fun EngineMode.icon(): ImageVector = when (this) {
     EngineMode.MTK -> Icons.Filled.Memory
     EngineMode.QDL -> Icons.Filled.DeveloperBoard
     EngineMode.BROKKR -> Icons.Filled.PhoneAndroid
+    EngineMode.ADB_FASTBOOT -> Icons.Filled.Usb
 }
 
 /** First slot of the bottom bar: the active mode's glyph in a tonal pill, with its name underneath. */

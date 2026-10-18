@@ -211,6 +211,7 @@ internal fun ModesPage() {
             EngineMode.MTK -> "MediaTek chips in BootROM, Preloader and DA mode. Partition read and write, erase, full dumps and device control, with a live console."
             EngineMode.QDL -> "Qualcomm devices in EDL (9008) mode. Set up the programmer and firmware once in Session, then every command uses it."
             EngineMode.BROKKR -> "Samsung devices in Download mode. Flash .tar and .md5 firmware packages over USB, or wirelessly for watches."
+            EngineMode.ADB_FASTBOOT -> "Any Android device with USB debugging on, or in fastboot mode. Detected by its USB interface, so every manufacturer works."
         }
     )
     Panel {
@@ -234,6 +235,9 @@ private fun tabInfo(t: Tab): String = when (t) {
     Tab.Progress -> "Live overall progress, speed, ETA and the partition being written. Stop is here too."
     Tab.Devices -> "Samsung devices on the USB bus. Grant permission, and see whether each is really in download mode."
     Tab.Log -> "The full live log. Copy or share it when you need help."
+    Tab.AdbDevices -> "ADB and fastboot devices on the USB bus. Grant permission, then connect."
+    Tab.AdbFastboot -> "Variables of a connected fastboot device, and the reboot menu."
+    Tab.AdbLog -> "Connection and protocol messages. Copy or share them when you need help."
 }
 
 @Composable
@@ -595,7 +599,7 @@ internal fun SettingsMapPage() {
         SettingsRow(Icons.Filled.Palette, "Appearance", "Light or dark, wallpaper colours or your own palette, shapes, spacing, motion. The Dynamic Island has its own submenu in here."),
         SettingsRow(Icons.Filled.Description, "Logging", "A full diagnostic log of the whole app, including crashes and stack traces. Export it when reporting a bug."),
         SettingsRow(Icons.Filled.Science, "Experimental", "USB speed features and presets, plus hashing dumps as they are written. Switch one off if something misbehaves."),
-        SettingsRow(Icons.Filled.Info, "About", "Version, a summary of the three modes, and credits for the open-source tools Bareflash is built on."),
+        SettingsRow(Icons.Filled.Info, "About", "Version, a summary of the four modes, and credits for the open-source tools Bareflash is built on."),
         SettingsRow(Icons.Filled.School, "Tutorial", "This walkthrough. Open it again any time.")
     )
     var expandedRow by remember { mutableStateOf<String?>(null) }

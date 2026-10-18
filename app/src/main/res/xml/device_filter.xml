@@ -15,4 +15,10 @@
     <usb-device vendor-id="1256" product-id="26113" />
     <usb-device vendor-id="1256" product-id="26717" />
     <usb-device vendor-id="1256" product-id="26819" />
+    <!-- ADB and fastboot, any manufacturer. Android matches these against each interface
+         of the attached device (class 0xFF = 255, subclass 0x42 = 66): protocol 1 is ADB,
+         protocol 3 is fastboot. Verified against AOSP android.hardware.usb.DeviceFilter,
+         which falls back to the interface descriptors when the device-level class does not match. -->
+    <usb-device class="255" subclass="66" protocol="1" />
+    <usb-device class="255" subclass="66" protocol="3" />
 </resources>
