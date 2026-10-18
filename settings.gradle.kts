@@ -18,3 +18,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Bareflash"
 include(":app")
+include(":usbcore")
+include(":fastboot")
