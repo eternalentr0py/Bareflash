@@ -1,8 +1,8 @@
 # Bareflash: continuation brief
 
-**Purpose:** everything needed to continue this project in a new chat with no other context. Paste this file into the new chat, supply a GitHub token (see "Working rules"), and say "continue".
+**Purpose:** everything needed to continue this project in a new chat with no other context. Paste this file into the new chat, supply a GitHub token (see "Working rules"), and say "continue". The repo may also need to be attached to the session (add_repo with push access) before git/gh work.
 
-**Brief revision:** 1, written after subtask 1 (fastboot core). Update this file after every implementation step and send it to the owner.
+**Brief revision:** 3, written after subtask 3 (`:adb` core). Revision history: 1 = `:usbcore` + `:fastboot`; 2 = Android USB transport + ADB/fastboot mode skeleton; 2.1 = CI compile fix; 3 = `:adb` protocol core. Update this file after every implementation step and send it to the owner.
 
 ---
 
@@ -48,7 +48,8 @@ Existing app (Kotlin + Compose UI, package `com.bareflash.app`, minSdk 26, compi
 | UI | `ui/` (`MainShell.kt`, `ModeSwitcher.kt`, `ConsoleScreen.kt`, `CommandsScreen.kt`, `DumpsScreen.kt`, `Settings*.kt`, `TypedConfirmDialog.kt`, tutorial/onboarding) |
 | USB attach filter | `app/src/main/res/xml/device_filter.xml` (MediaTek 0x0E8D, Qualcomm 0x05C6, Samsung 0x04E8 download-mode PIDs only) |
 | CI | `.github/workflows/release.yml` (Build & Release, manual), `tests.yml` (JVM unit tests on push/PR) |
-| Docs | `docs/` (`BROKKR_AND_USB.md`, `QDL_ENGINE.md`, `RELEASE_CHECKLIST.md`, `USB_PERFORMANCE.md`, `ADB_FASTBOOT_ROADMAP.md`) |
+| Docs | `docs/` (`BROKKR_AND_USB.md`, `QDL_ENGINE.md`, `RELEASE_CHECKLIST.md`, `USB_PERFORMANCE.md`, `ADB_FASTBOOT_ROADMAP.md`), `usbcore/README.md`, `fastboot/README.md`, `adb/README.md` |
+| ADB/fastboot mode (new, rev 2) | `app/.../adbfb/` (`AdbFbUsb.kt`, `AdbFbModels.kt`, `AdbFbViewModel.kt`), `app/.../ui/adbfb/AdbFbScreens.kt` |
 
 Privacy/permission facts found during the audit (unchanged so far):
 - No analytics, ads, or HTTP client code; dependencies are AndroidX/Compose/Material, Chaquopy, pycryptodome(x), colorama.
@@ -67,7 +68,7 @@ Commit "Add :usbcore and :fastboot modules (native fastboot protocol, subtask 1)
 - `settings.gradle.kts`: `include(":usbcore")`, `include(":fastboot")`.
 - root `build.gradle.kts`: added plugin `org.jetbrains.kotlin.jvm` version 2.3.0 (apply false).
 - `app/build.gradle.kts`: `testDebugUnitTest` now `dependsOn(":usbcore:test", ":fastboot:test")`, so the existing Tests workflow runs the new modules' tests. (`tests.yml` itself was **not** changed: the owner's token lacks the `workflow` scope, so GitHub rejects pushes that touch `.github/workflows/`. Optional later: also upload `usbcore/build/reports/tests/**` and `fastboot/build/reports/tests/**` on failure.)
-- Both modules use `kotlin("jvm")` plugin id `org.jetbrains.kotlin.jvm`, JVM 17, `explicitApi()`, `allWarningsAsErrors`, JUnit 4.13.2. The `:app` module does **not** yet depend on them.
+- Both modules use `kotlin("jvm")` plugin id `org.jetbrains.kotlin.jvm`, JVM 17, `explicitApi()`, `allWarningsAsErrors`, JUnit 4.13.2. (Rev 2 added `implementation(project(":fastboot"))` to `:app`; rev 3 adds `:adb`.)
 
 **`:usbcore`** (`usbcore/src/main/kotlin/com/bareflash/usb/`)
 - `UsbTransport` (write exactly N bytes or throw; read one transfer; `UsbTimeoutException`, `UsbDisconnectedException`, base `UsbTransportException : IOException`).
@@ -86,6 +87,26 @@ Commit "Add :usbcore and :fastboot modules (native fastboot protocol, subtask 1)
 - `fastboot/tools/crosscheck-libsparse.sh` feeds planner output to Android's real `simg2img`; all three scenarios passed (byte-identical reassembly; passthrough identical).
 - **Not verified:** the Gradle/AGP build of the new modules, the Android app build with them, and any real device. These pieces were written from AOSP documentation.
 
+## 4b. Implemented in revision 2 (subtask 2)
+
+**`:usbcore` additions** (pure JVM, strict flags, tested)
+- `UsbDescriptors.kt`: `UsbEndpointInfo`, `UsbInterfaceInfo`, `UsbDirection`, `UsbEndpointType` (plain copies of descriptor fields).
+- `DebugInterface.kt`: `DebugInterfaceFinder.find(interfaces[, protocol])` picks ADB/fastboot interfaces (class 0xFF/0x42, protocol 1 or 3) with first bulk IN and OUT endpoint; lowest alternate setting per interface id wins; ordered by id. Vendor never consulted.
+- `BulkTransport.kt`: `BulkBackend` (raw `bulkOut`/`bulkIn` returning negative on failure, like Android's `bulkTransfer`) and `BulkTransport : UsbTransport`. Writes are chunked to whole max-packet multiples (default chunk 16 KiB), optional trailing zero-length packet when length is an exact packet multiple (ADB will need it, fastboot not), reads capped to chunk size. Failure classification: closed or device detached -> `UsbDisconnectedException`; failure that used >= 90% of the timeout -> `UsbTimeoutException`; otherwise `UsbTransportException` (stall/IO). This is a heuristic; unmeasured on hardware.
+- Tests: `BulkTransportTest` (18), `DebugInterfaceFinderTest` (10), `FakeBulkBackend`. Total JVM tests now **76 passing** (45 old + 31 new) via kotlinc+JUnit with `-Werror -Xexplicit-api=strict`.
+
+**App module**
+- `EngineMode.ADB_FASTBOOT` (id `adbfb`, label "ADB", icon `Usb`, empty `vendorIds` so the MTK/QDL console ignores it, like Samsung). All exhaustive `when`s over `EngineMode` updated (Catalogs x4, ModeSwitcher icon, ConsoleTerminalCard prompt word `adb`, SettingsScreen hint, TutorialPages, SettingsAbout now "Four modes").
+- `adbfb/AdbFbUsb.kt`: converts `UsbDevice` to `:usbcore` descriptors, `scan`, `isDebugDevice`, `open(usb, device, protocol)` (checks permission, `openDevice`, `claimInterface(force=true)`, `setInterface` for alt != 0), `AdbFbConnection`, `AndroidBulkBackend` over `UsbDeviceConnection`. Compile-checked against android-34 `android.jar`; never run.
+- `adbfb/AdbFbViewModel.kt`: own USB receiver (`com.bareflash.app.ADBFB_USB_PERMISSION`), permission flow, single-thread USB executor, `connect` (fastboot only: reads `getvar all`), `refreshVars`, `reboot(RebootTarget)`, `disconnect`, log. A device `FAIL` keeps the link up (protocol still in step); any other failure drops the connection. Detach while a transfer runs only marks detached (no closing under the transfer).
+- UI (`ui/adbfb/AdbFbScreens.kt`): tabs `Devices` (list, Grant, Connect/Disconnect, status), `Fastboot` (reboot menu, variables table), `Log`. New `Tab` entries `AdbDevices`, `AdbFastboot`, `AdbLog`; mode tabs = those + Settings. `MainShell` takes `adbfbVm`/`adbfb`, includes the ADB busy flag in the mode lock, and does not show the console island in this mode. No flashing/erasing is reachable from the UI yet.
+- `MainActivity`: third ViewModel, `setActive` on mode change; `handleIntent` routes any attach of a device with an ADB/fastboot interface to this mode before the Samsung vendor check.
+- `device_filter.xml`: added `<usb-device class="255" subclass="66" protocol="1"/>` and `protocol="3"`. Android's `DeviceFilter.matches(UsbDevice)` falls back to checking each interface (verified in the Android 12 source), so this matches any vendor. Side effect: plugging in any phone with USB debugging on offers to open Bareflash.
+- `app/build.gradle.kts`: `implementation(project(":fastboot"))` (which exposes `:usbcore` through `api`).
+- Docs: README (four modes, honest status), new `usbcore/README.md`, roadmap updated.
+
+**Not verified:** Gradle/AGP compile of the app and Compose code (only `AdbFbUsb.kt` was compile-checked locally; ViewModel/UI could not be, no coroutines/Compose/lifecycle jars in the sandbox), the device-filter attach behaviour, any real device. CI result is the first check.
+
 ## 4c. Revision 2.1: CI compile fix
 
 Both CI runs for revision 2 (Tests and Build & Release `1.0.1-beta.8`) failed with the same single error:
@@ -95,6 +116,30 @@ Both CI runs for revision 2 (Tests and Build & Release `1.0.1-beta.8`) failed wi
 Fix: added `LiveEngine.Adb("ADB / Fastboot", 0xFFB48CFF)` in `live/LiveModels.kt` and `EngineMode.ADB_FASTBOOT -> LiveEngine.Adb` in `ConsoleViewModel.liveEngineFor`. A scripted audit of every `when` containing a `BROKKR ->` branch (and every `LiveEngine` `when`) found no other non-exhaustive one. Kotlin reported only that one error in each log, so no other compile error was visible; later Gradle stages (lint, R8, packaging) had not run yet.
 
 Lesson for future steps: every new `EngineMode` or `LiveEngine` value needs every exhaustive `when` updated; grep for `BROKKR ->` to find them.
+
+## 4d. Implemented in revision 3 (subtask 3: `:adb` core)
+
+New pure-Kotlin/JVM module `:adb` (`adb/`, package `com.bareflash.adb`, depends on `:usbcore` via `api`, same Gradle setup as `:fastboot`: JVM 17, `explicitApi()`, `allWarningsAsErrors`, JUnit 4.13.2). Wiring: `settings.gradle.kts` includes `:adb`; `app/build.gradle.kts` has `implementation(project(":adb"))` and `testDebugUnitTest` now `dependsOn(":usbcore:test", ":fastboot:test", ":adb:test")`; `.github/workflows/tests.yml` uploads all four module report dirs on failure (first workflow edit, possible since the token gained the `workflow` scope). The app does not call `:adb` yet (that is subtask 4/5).
+
+**Production code** (`adb/src/main/kotlin/com/bareflash/adb/`)
+- `AdbWire.kt`: `AdbCommand` ids (little-endian ASCII), `AdbProtocol` constants (`VERSION_SKIP_CHECKSUM` 0x01000001, host max payload 256 KiB, host features `shell_v2,stat_v2,ls_v2`), `AdbMessage`, header encode/decode with magic and length validation.
+- `MessageChannel.kt` (internal): buffered message reader that tolerates any transport slicing (one USB transfer per read, byte dribbling, zero-length packets, two messages in one read); serialized writes (header and payload as separate transfers); checksum sent/verified only when the negotiated version needs it.
+- `AdbConnection.kt`: `AdbConnection.connect(transport, keys, config, listener, cancel, log)` does CNXN then AUTH (sign token; if rejected offer the public key; `AdbAuthListener.onWaitingForUserApproval(fingerprint)`; wait `approvalTimeoutMs`; second rejection = `AdbAuthException`; STLS refused). Then one daemon reader thread routes OKAY/WRTE/CLSE to streams. `open(service)`, `supports(feature)`, `info` (`AdbDeviceInfo` parsed from the banner: state, properties, features, `model`/`product`/`device`), `maxPayload`, `close()` (closes the transport). The caller keeps the transport if `connect` throws.
+- `AdbStream.kt`: one-message-in-flight flow control both ways; the OKAY that releases the device's next chunk is sent only after the previous chunk is consumed by `read` (backpressure); `write`, `read`, `readFully`, `readAll(maxBytes)`, `close`, `isClosed`. The reader never blocks on stream state; a stream never sends while holding its lock.
+- `AdbShell.kt`: `shell(cmd, timeoutMs, maxOutputBytes)` (shell v2: separate stderr and unsigned exit code; legacy `shell:` fallback with merged output and null exit code; output cap sets `truncated`), `openShell(cmd, pty, term)` returning `AdbShellSession` (`readEvent`, `writeStdin`, `closeStdin`, `resize`), `openLegacyShell`, `exec()` (binary-safe), `reboot(AdbRebootTarget)` (tolerates the link dropping).
+- `AdbSync.kt`: `openSync()` returns `AdbSyncSession` with `stat`, `list`, `push(InputStream, path, mode, mtime, cancel, onProgress)`, `pull(path, OutputStream, cancel, onProgress)`; v1 and v2 (`STA2`: 68 bytes after the id including ctime; `DNT2`/`DONE` blocks 72 bytes after the id); directory names containing `/` or NUL are refused; arguments are validated BEFORE anything is sent (a bad path does not kill the session); a device `FAIL` leaves the session usable, any other error or cancel closes it.
+- `AdbKeyPair.kt`: RSA-2048 `AdbKeyPair` (`generate`, `fromPkcs8`, `toPkcs8`, `signToken` = `NONEwithRSA` over the SHA-1 DigestInfo prefix plus the raw 20-byte token, `publicKeyMessage(name)` = base64 of the 524-byte Android struct + space + name + NUL, `fingerprint()` = MD5 of the struct, colon hex), `AdbKeyStore`, `loadOrCreate()`, `FileAdbKeyStore` (atomic write, owner-only).
+- `AdbExceptions.kt`: `AdbException` hierarchy (protocol, auth, timeout, closed, stream rejected, cancelled, sync failure with the device's text, unsupported).
+- App change: `AdbFbUsb.open` now defaults `BulkTransportConfig(zeroLengthPacketAfterFullFinalPacket = true)` for the ADB protocol (ADB needs a ZLP after writes ending on a full packet; fastboot does not).
+
+**Tests and verification** (76 `:adb` tests, all passing with `kotlinc` + JUnit, `-Werror`)
+- Test fake: `FakeAdbd.kt` (message-level adbd: auth, shell v2 incl. interactive `cat`, legacy shell, exec, reboot, sync v1/v2, one message in flight per stream, 32 KiB shell packets like adbd), `FakeAdbUsbTransport.kt` (USB-style transfers, optional zero-length packets, detach/inject hooks), `Harness.kt`, `tools/FakeAdbdServer.kt` (same fake over TCP).
+- Reference checks produced outside this code base: public-key struct byte-identical to adb-shell's `encode_pubkey`; token signature byte-identical to OpenSSL (`cryptography`, token as pre-hashed SHA-1); CNXN/OKAY header bytes identical to adb-shell's; command ids identical.
+- `adb/tools/interop-real-adb.sh`: starts the fake over TCP and drives it with the REAL `adb` 34.0.4 (`apt-get install adb`): first connection (key offered and accepted, banner parsed), shell v2 output/exit code/separate stderr, pull small and 300 KB, push, push/pull round trip, reconnect where the remembered key is accepted by signature alone (asserted via server trace). All pass. This validates the fake against Google's client; it does not validate this library against a real adbd.
+- A real bug was found by review before tests (STA2 block size missed ctime) and one by tests (sync argument validation inside the close-on-error guard); both fixed.
+- **Not verified:** the Gradle/AGP build of `:adb` (CI is the first check), the one-line app change, and everything on real hardware (real adbd, real USB, real Android key prompt, fingerprint format shown by the device).
+
+**Known limits / not implemented:** `cmd`/`abb` services (package install), `forward`/`reverse`, `sendrecv_v2` compressed sync, delayed ack, TLS/wireless, `root:`/`tcpip:`, `track-devices`. Private key stored as plain PKCS#8 in app storage (Android Keystore is a possible hardening step).
 
 ## 5. Decisions and rationale
 
@@ -107,8 +152,8 @@ Lesson for future steps: every new `EngineMode` or `LiveEngine` value needs ever
 
 | # | Subtask | Notes |
 |---|---|---|
-| 2 | Android `UsbTransport` + `EngineMode` skeleton | Implement `UsbTransport` over `UsbManager`/`UsbDeviceConnection` (claim the interface matching `UsbInterfaceIds`, find bulk IN/OUT endpoints, chunk bulk transfers, tune size, consider `UsbRequest` for throughput, map errors to `UsbTimeout/Disconnected`). Add an `ADB_FASTBOOT` entry to `EngineMode`, USB permission flow, device list. Extend `device_filter.xml` by interface class (verify Android matches `class/subclass/protocol` against interfaces; if not, handle attach differently). Add `implementation(project(":fastboot"))` (and `:adb`) to `:app`. First place fastboot runs on a real phone; ask the owner to test. |
-| 3 | `:adb` core | CNXN/AUTH (RSA 2048 key in app-private storage, AUTH_TOKEN/SIGNATURE/RSAPUBLICKEY), OPEN/WRTE/OKAY/CLSE streams with flow control, shell v2 protocol, sync protocol (list/stat/push/pull), `exec:`; max payload negotiation; JVM tests against a fake ADB device. Reference: AOSP `adb/OVERVIEW.TXT`, `adb/protocol.txt`, `adb/SYNC.TXT`. |
+| 2 (DONE, rev 2) | Android `UsbTransport` + `EngineMode` skeleton | Implement `UsbTransport` over `UsbManager`/`UsbDeviceConnection` (claim the interface matching `UsbInterfaceIds`, find bulk IN/OUT endpoints, chunk bulk transfers, tune size, consider `UsbRequest` for throughput, map errors to `UsbTimeout/Disconnected`). Add an `ADB_FASTBOOT` entry to `EngineMode`, USB permission flow, device list. Extend `device_filter.xml` by interface class (verify Android matches `class/subclass/protocol` against interfaces; if not, handle attach differently). Add `implementation(project(":fastboot"))` (and `:adb`) to `:app`. First place fastboot runs on a real phone; ask the owner to test. |
+| 3 (DONE, rev 3) | `:adb` core | CNXN/AUTH (RSA 2048 key in app-private storage, AUTH_TOKEN/SIGNATURE/RSAPUBLICKEY), OPEN/WRTE/OKAY/CLSE streams with flow control, shell v2 protocol, sync protocol (list/stat/push/pull), `exec:`; max payload negotiation; JVM tests against a fake ADB device. Reference: AOSP `adb/OVERVIEW.TXT`, `adb/protocol.txt`, `adb/SYNC.TXT`. |
 | 4 | Console tab and Commands tab | Real CLI parser for `adb ...` / `fastboot ...`, completion/history reusing `console/shell/*`, a catalog like `McCatalog`, destructive-command confirmation via existing review/typed-confirm dialogs. |
 | 5 | GUI tabs | Device info + reboot menu, Files (sync), Apps (list/install incl. split APKs/uninstall/extract/permissions), Logcat, Fastboot (getvar table, flash, erase, slots, typed confirm for unlock/lock). |
 | 6 | Screen mirror | Vendored scrcpy-server + Kotlin client + MediaCodec + multitouch mapping; version-pinned. |
@@ -116,6 +161,8 @@ Lesson for future steps: every new `EngineMode` or `LiveEngine` value needs ever
 | 8 | Hardening | Fuzzing the protocol parsers, real-device matrix in `docs/RELEASE_CHECKLIST.md`, reproducible build notes, Gradle dependency verification, release signing, optional no-`INTERNET` flavor. |
 
 ## 7. Sandbox/tooling notes (for the assistant)
+
+Rev 2 additions: the repo must be attached with `add_repo` (access push) and cloned via the session proxy; plain `git push` then works without a token in the URL, and `gh` works for workflow dispatch. `apt-get update` is needed before `apt-get download junit4 libhamcrest-java`. A real `android.jar` (API 34) can be fetched from `raw.githubusercontent.com/Reginer/aosp-android-jar/main/android-34/android.jar` for compile-checking Android glue with kotlinc. AOSP sources for reference: `raw.githubusercontent.com/aosp-mirror/platform_frameworks_base/android-12.0.0_r1/...` (newer tags 404 for some paths).
 
 The chat sandbox has JDK 21 and Python, no Gradle distribution, no Android SDK, no Maven/Google repositories. Network allows `github.com`, `api.github.com`, `codeload`/`raw.githubusercontent.com`, `release-assets.githubusercontent.com`, `archive.ubuntu.com`, PyPI, npm, crates. So Android/Gradle builds can only be verified by GitHub Actions.
 
@@ -134,16 +181,19 @@ java -cp out/main:out/test:junit4.jar:hamcrest-core.jar:kotlin-stdlib.jar org.ju
 ```
 Gotchas seen: `internal` symbols need `-Xfriend-paths` when tests are compiled separately; the silent-device reboot test must pass a short `answerTimeoutMs`.
 
+Rev 3 additions for ADB: `apt-get install -y adb` gives the real `adb` 34.0.4 host binary (no `adbd` package exists on Ubuntu 24.04); `pip install --break-system-packages adb-shell rsa cryptography` gives reference implementations for key/signature/header vectors. Compile `:adb` with `-Xexplicit-api=strict` together with the `:usbcore` sources, tests with `-Xfriend-paths`. Run the real-adb check with `adb/tools/interop-real-adb.sh <main-classes> <test-classes> <kotlin-stdlib.jar>`. Gotchas: never `pkill -f` a pattern that appears in your own command (it kills the tool shell); start background servers with `setsid nohup ... &` and kill by saved pid; `adb connect` returns before the user prompt is answered (that is not a failure); JUnit test methods must return Unit (helper functions taking lambdas must return Unit too).
+
 ## 8. Build log
 
 | Revision | Commit | Build & Release | Notes |
 |---|---|---|---|
-| 1 | "Add :usbcore and :fastboot modules (native fastboot protocol, subtask 1)" `f7552fb` | Tests green; Build & Release `1.0.1-beta.7` green | A first dispatch ran on old `main` (push had been rejected for a workflow-file change) and was cancelled; re-dispatched after the corrected push. |
-| 2 | "Add Android USB transport and ADB/fastboot mode skeleton (subtask 2)" `6426ac4` | Tests **failed**, Build & Release `1.0.1-beta.8` **failed** (same compile error in both) | Non-exhaustive `when` in `ConsoleViewModel.liveEngineFor`. |
-| 2.1 | "Fix non-exhaustive EngineMode when (LiveEngine.Adb)" | dispatched as `1.0.1-beta.8` (not yet checked) | Result not awaited, per owner. If it fails, the owner pastes logs. |
+| 1 | "Add :usbcore and :fastboot modules (native fastboot protocol, subtask 1)" `f7552fb` | Tests green; `1.0.1-beta.7` green | A first dispatch ran on old `main` (push had been rejected) and was cancelled; re-dispatched after the corrected push. |
+| 2 | "Add Android USB transport and ADB/fastboot mode skeleton (subtask 2)" `6426ac4` | Tests **failed**, `1.0.1-beta.8` **failed** | Non-exhaustive `when` in `ConsoleViewModel.liveEngineFor`. |
+| 2.1 | "Fix non-exhaustive EngineMode when (LiveEngine.Adb)" `a23482d` | Tests green; `1.0.1-beta.8` green | |
+| 3 | "Add :adb module (native ADB protocol core, subtask 3)" | dispatched as `1.0.1-beta.9`, not awaited | First CI run of the `:adb` Gradle module and of the `AdbFbUsb` default-config change. If it fails the owner pastes logs. |
 
 ## 9. Next step
 
-1. Owner reports the result of the revision-2.1 Tests and Build & Release runs (paste logs if they fail; fix compile errors first).
-2. Ask the owner to test on hardware if possible: plug a phone in fastboot mode (and one with USB debugging) via OTG, check Devices lists it, Grant works, Connect shows variables, reboot works, and whether the attach launch opens the app in ADB mode.
-3. Start subtask 3: `:adb` core (see section 6).
+1. Owner reports the result of the revision-3 Tests and Build & Release runs (paste logs if they fail; fix compile errors first).
+2. Subtask 4: Console tab and Commands tab. In `AdbFbViewModel.connect`, branch on protocol: ADB opens `AdbConnection.connect(conn.transport, keys, config, listener)` with an `AdbKeyStore` (a `FileAdbKeyStore` under `filesDir`), surfaces the "accept on the device" state with the key fingerprint, and keeps the `AdbConnection` for the tabs; then a CLI parser for `adb ...` / `fastboot ...` lines, completion/history reusing `console/shell/*`, and a command catalog, with destructive commands (flash, erase, unlock, `rm`, `reboot` variants, `push` overwrite) going through the existing review/typed-confirm dialogs. Remember: every new `EngineMode`/`LiveEngine`/`Tab` value needs every exhaustive `when` updated.
+3. Ask the owner to test ADB and fastboot on real phones (USB debugging prompt, shell, file list/push/pull, fastboot variables, reboot) and report what differs.

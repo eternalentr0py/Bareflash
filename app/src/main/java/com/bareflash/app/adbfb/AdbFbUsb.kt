@@ -56,6 +56,13 @@ internal object AdbFbUsb {
         maxPacketSize = ep.maxPacketSize,
     )
 
+    /**
+     * ADB needs a zero-length packet after any write that ends on a full USB
+     * packet, or the device waits for more; fastboot does not.
+     */
+    private fun defaultConfig(protocol: DebugProtocol): BulkTransportConfig =
+        BulkTransportConfig(zeroLengthPacketAfterFullFinalPacket = protocol == DebugProtocol.ADB)
+
     /** ADB and fastboot interfaces this device offers (usually zero or one). */
     fun debugInterfaces(device: UsbDevice): List<DebugInterface> =
         DebugInterfaceFinder.find(interfacesOf(device))
@@ -75,7 +82,7 @@ internal object AdbFbUsb {
         usb: UsbManager,
         device: UsbDevice,
         protocol: DebugProtocol,
-        config: BulkTransportConfig = BulkTransportConfig(),
+        config: BulkTransportConfig = defaultConfig(protocol),
     ): AdbFbConnection {
         val wanted = DebugInterfaceFinder.find(interfacesOf(device), protocol)
             ?: throw AdbFbOpenException("The device has no $protocol interface.")

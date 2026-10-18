@@ -20,3 +20,4 @@ rootProject.name = "Bareflash"
 include(":app")
 include(":usbcore")
 include(":fastboot")
+include(":adb")

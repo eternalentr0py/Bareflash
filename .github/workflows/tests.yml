@@ -1,7 +1,8 @@
 name: Tests
 
-# JVM unit tests (app/src/test). They check pure logic only: parsers, command
-# planning, formatting. Nothing here touches a USB device, so a green run says
+# JVM unit tests (app/src/test plus the :usbcore, :fastboot and :adb protocol
+# modules). They check pure logic only: parsers, command planning, formatting,
+# and the protocols against fake devices. Nothing here touches a USB device, so a green run says
 # nothing about hardware; see docs/RELEASE_CHECKLIST.md for the device matrix.
 on:
   push:
@@ -77,5 +78,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: unit-test-reports
-          path: app/build/reports/tests/**
+          path: |
+            app/build/reports/tests/**
+            usbcore/build/reports/tests/**
+            fastboot/build/reports/tests/**
+            adb/build/reports/tests/**
           if-no-files-found: ignore
