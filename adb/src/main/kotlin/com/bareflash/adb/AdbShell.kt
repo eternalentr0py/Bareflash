@@ -190,6 +190,12 @@ public enum class AdbRebootTarget(internal val service: String) {
     RECOVERY("reboot:recovery"),
     SIDELOAD("reboot:sideload"),
     FASTBOOTD("reboot:fastboot"),
+
+    /** Samsung download (Odin) mode. Only some devices honour this. */
+    DOWNLOAD("reboot:download"),
+
+    /** Qualcomm emergency download mode. Only some devices honour this. */
+    EDL("reboot:edl"),
 }
 
 /**

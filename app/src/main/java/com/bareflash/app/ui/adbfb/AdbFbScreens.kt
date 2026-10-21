@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
@@ -30,6 +31,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,7 +63,13 @@ import java.util.Locale
 @Composable
 fun AdbFbTabs(vm: AdbFbViewModel, tab: Tab) {
     when (tab) {
-        Tab.AdbDevices -> AdbDevicesScreen(vm)
+        Tab.AdbDevices -> {
+            // The protocol log is one tap away from here instead of a tab of its own.
+            var showLog by rememberSaveable { mutableStateOf(false) }
+            if (showLog) AdbLogScreen(vm, onBack = { showLog = false }) else AdbDevicesScreen(vm, onShowLog = { showLog = true })
+        }
+        Tab.AdbConsole -> AdbConsoleScreen(vm)
+        Tab.AdbCommands -> AdbCommandsScreen(vm)
         Tab.AdbFastboot -> AdbFastbootScreen(vm)
         Tab.AdbLog -> AdbLogScreen(vm)
         else -> Unit
@@ -71,7 +81,7 @@ fun AdbFbTabs(vm: AdbFbViewModel, tab: Tab) {
 // ---------------------------------------------------------------------------
 
 @Composable
-fun AdbDevicesScreen(vm: AdbFbViewModel) {
+fun AdbDevicesScreen(vm: AdbFbViewModel, onShowLog: () -> Unit = {}) {
     val devices by vm.devices.collectAsStateWithLifecycle()
     val link by vm.link.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -79,8 +89,13 @@ fun AdbDevicesScreen(vm: AdbFbViewModel) {
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             NcHeader(kicker = EngineMode.ADB_FASTBOOT.short, title = "Devices", trailing = {
-                IconButton(onClick = { vm.refreshDevices(forcePrompt = true) }) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "Rescan")
+                Row {
+                    IconButton(onClick = onShowLog) {
+                        Icon(Icons.Filled.Description, contentDescription = "Show the log")
+                    }
+                    IconButton(onClick = { vm.refreshDevices(forcePrompt = true) }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Rescan")
+                    }
                 }
             })
         }
@@ -132,6 +147,7 @@ fun AdbDevicesScreen(vm: AdbFbViewModel) {
 @Composable
 private fun DeviceRow(d: AdbFbDevice, link: AdbFbLink, busy: Boolean, vm: AdbFbViewModel) {
     val connected = link.state == AdbFbLinkState.CONNECTED && link.deviceName == d.name
+    val connecting = link.state == AdbFbLinkState.CONNECTING && link.deviceName == d.name
     val protocols = d.protocols.joinToString(" + ") { if (it == DebugProtocol.ADB) "ADB" else "fastboot" }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
@@ -152,11 +168,21 @@ private fun DeviceRow(d: AdbFbDevice, link: AdbFbLink, busy: Boolean, vm: AdbFbV
         when {
             !d.permitted -> TextButton(onClick = { vm.refreshDevices(forcePrompt = true) }) { Text("Grant") }
             connected -> TextButton(onClick = vm::disconnect) { Text("Disconnect") }
-            d.hasFastboot -> TextButton(
-                onClick = { vm.connect(d.name, DebugProtocol.FASTBOOT) },
-                enabled = !busy
-            ) { Text("Connect") }
-            d.hasAdb -> Text("ADB soon", style = MaterialTheme.typography.bodySmall, color = Nc.Muted)
+            connecting -> TextButton(onClick = vm::disconnect) { Text("Cancel") }
+            else -> Row {
+                if (d.hasAdb) {
+                    TextButton(
+                        onClick = { vm.connect(d.name, DebugProtocol.ADB) },
+                        enabled = !busy
+                    ) { Text(if (d.hasFastboot) "ADB" else "Connect") }
+                }
+                if (d.hasFastboot) {
+                    TextButton(
+                        onClick = { vm.connect(d.name, DebugProtocol.FASTBOOT) },
+                        enabled = !busy
+                    ) { Text(if (d.hasAdb) "Fastboot" else "Connect") }
+                }
+            }
         }
     }
 }
@@ -263,7 +289,7 @@ private fun VarRow(name: String, value: String) {
 // ---------------------------------------------------------------------------
 
 @Composable
-fun AdbLogScreen(vm: AdbFbViewModel) {
+fun AdbLogScreen(vm: AdbFbViewModel, onBack: (() -> Unit)? = null) {
     val lines by vm.logLines.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -279,6 +305,7 @@ fun AdbLogScreen(vm: AdbFbViewModel) {
     Column(Modifier.fillMaxSize()) {
         NcHeader(kicker = EngineMode.ADB_FASTBOOT.short, title = "Log", trailing = {
             Row {
+                if (onBack != null) TextButton(onClick = onBack) { Text("Devices") }
                 IconButton(onClick = { clipboard.setText(AnnotatedString(vm.logText())) }) {
                     Icon(Icons.Filled.ContentCopy, "Copy log")
                 }

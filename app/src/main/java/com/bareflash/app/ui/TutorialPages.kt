@@ -236,6 +236,8 @@ private fun tabInfo(t: Tab): String = when (t) {
     Tab.Devices -> "Samsung devices on the USB bus. Grant permission, and see whether each is really in download mode."
     Tab.Log -> "The full live log. Copy or share it when you need help."
     Tab.AdbDevices -> "ADB and fastboot devices on the USB bus. Grant permission, then connect."
+    Tab.AdbConsole -> "Type adb and fastboot commands the way you would on a computer. Tab completes, the arrows walk the history, and anything risky asks first."
+    Tab.AdbCommands -> "Ready-made ADB and fastboot commands with blanks to fill in. They run in the console, so you always see what happened."
     Tab.AdbFastboot -> "Variables of a connected fastboot device, and the reboot menu."
     Tab.AdbLog -> "Connection and protocol messages. Copy or share them when you need help."
 }

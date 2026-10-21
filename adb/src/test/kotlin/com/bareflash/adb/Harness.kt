@@ -1,5 +1,8 @@
 package com.bareflash.adb
 
+import com.bareflash.fakes.FakeAdbdCore
+import com.bareflash.fakes.FakeAdbUsbTransport
+import com.bareflash.fakes.TestKeys
 /** A connected [AdbConnection] over a fake device, closed after the block. */
 class Harness(
     val core: FakeAdbdCore = FakeAdbdCore(),

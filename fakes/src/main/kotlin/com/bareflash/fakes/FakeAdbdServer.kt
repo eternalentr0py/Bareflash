@@ -1,10 +1,6 @@
-package com.bareflash.adb.tools
+package com.bareflash.fakes
 
-import com.bareflash.adb.AdbWire
-import com.bareflash.adb.FakeAdbdCore
-import com.bareflash.adb.FakeFs
 import com.bareflash.adb.AdbMessage
-import com.bareflash.adb.ShellOutcome
 import java.io.DataInputStream
 import java.net.ServerSocket
 import java.net.Socket
@@ -50,15 +46,15 @@ private fun serve(socket: Socket, fs: FakeFs, auth: Boolean, keys: MutableList<j
         val input = DataInputStream(socket.getInputStream().buffered())
         val out = socket.getOutputStream()
         while (true) {
-            val hb = ByteArray(AdbWire.HEADER_SIZE)
+            val hb = ByteArray(FakeWire.HEADER_SIZE)
             input.readFully(hb)
-            val h = AdbWire.decodeHeader(hb, 16 * 1024 * 1024)
+            val h = FakeWire.decodeHeader(hb)
             val payload = ByteArray(h.length).also { input.readFully(it) }
             val inMsg = AdbMessage(h.command, h.arg0, h.arg1, payload)
             if (trace) println("<- $inMsg")
             for (r in core.onMessage(inMsg)) {
                 if (trace) println("-> $r")
-                out.write(AdbWire.encodeHeader(r, false))
+                out.write(FakeWire.encodeHeader(r, false))
                 out.write(r.data)
                 out.flush()
             }

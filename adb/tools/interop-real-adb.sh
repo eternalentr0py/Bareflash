@@ -7,17 +7,19 @@
 # turn means the unit tests exercise this library against a faithful model.
 # What it does not prove: anything about a real adbd or a real USB link.
 #
-# Usage: interop-real-adb.sh <main-classes-dir> <test-classes-dir> <kotlin-stdlib.jar>
+# Usage: interop-real-adb.sh <main-classes-dir> <fakes-classes-dir> <kotlin-stdlib.jar>
+#   main-classes-dir  compiled :usbcore + :adb (+ :fastboot) classes
+#   fakes-classes-dir compiled :fakes classes (contains the TCP server)
 # Needs: adb (Debian/Ubuntu package `adb`), java, python3.
 set -euo pipefail
-MAIN=${1:?main classes}; TEST=${2:?test classes}; STDLIB=${3:?kotlin-stdlib.jar}
+MAIN=${1:?main classes}; TEST=${2:?fakes classes}; STDLIB=${3:?kotlin-stdlib.jar}
 PORT=${PORT:-6123}; S=127.0.0.1:$PORT
 W=$(mktemp -d); export HOME=$W/home; mkdir -p "$HOME"
 fail() { echo "FAIL: $*"; exit 1; }
 cleanup() { adb kill-server >/dev/null 2>&1 || true; [ -n "${PID:-}" ] && kill "$PID" 2>/dev/null || true; rm -rf "$W"; }
 trap cleanup EXIT
 
-FAKE_ADBD_TRACE=1 setsid java -cp "$MAIN:$TEST:$STDLIB" com.bareflash.adb.tools.FakeAdbdServerKt "$PORT" auth > "$W/server.log" 2>&1 < /dev/null &
+FAKE_ADBD_TRACE=1 setsid java -cp "$MAIN:$TEST:$STDLIB" com.bareflash.fakes.FakeAdbdServerKt "$PORT" auth > "$W/server.log" 2>&1 < /dev/null &
 PID=$!
 for _ in $(seq 1 50); do grep -q listening "$W/server.log" && break; sleep 0.1; done
 

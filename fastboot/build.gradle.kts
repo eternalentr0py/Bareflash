@@ -20,6 +20,7 @@ kotlin {
 
 dependencies {
     api(project(":usbcore"))
+    testImplementation(project(":fakes"))
     testImplementation("junit:junit:4.13.2")
 }
 

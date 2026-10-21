@@ -1,5 +1,7 @@
 package com.bareflash.adb
 
+import com.bareflash.fakes.FakeAdbdCore
+import com.bareflash.fakes.TestKeys
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -11,11 +13,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Base64
 import javax.crypto.Cipher
-
-/** One key shared by tests, because generating 2048-bit RSA keys is slow. */
-object TestKeys {
-    val pair: AdbKeyPair by lazy { AdbKeyPair.generate() }
-}
 
 class AdbKeyPairTest {
 

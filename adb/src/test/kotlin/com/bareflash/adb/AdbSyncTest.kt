@@ -1,5 +1,6 @@
 package com.bareflash.adb
 
+import com.bareflash.fakes.FakeAdbdCore
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

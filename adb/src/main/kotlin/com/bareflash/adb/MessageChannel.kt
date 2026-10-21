@@ -1,5 +1,6 @@
 package com.bareflash.adb
 
+import com.bareflash.usb.CancelToken
 import com.bareflash.usb.UsbTimeoutException
 import com.bareflash.usb.UsbTransport
 
@@ -47,18 +48,25 @@ internal class MessageChannel(
      * Reads one message. The header wait ends at [headerDeadlineNanos]
      * (use [NO_DEADLINE] to wait for as long as the channel stays open); once a
      * header has arrived the payload must follow within [payloadTimeoutMs].
+     * [cancel] is polled while waiting for the header, so a caller can abandon
+     * an idle wait (for example the user declining to approve a key).
+     *
+     * Waiting for a header uses short USB timeouts, which is safe because
+     * nothing is in flight. Once a header has arrived the rest of the message
+     * is read with long timeouts: Android discards the data of a transfer that
+     * times out half-way, which would silently corrupt the stream.
      */
-    fun receive(headerDeadlineNanos: Long, payloadTimeoutMs: Long): AdbMessage {
+    fun receive(headerDeadlineNanos: Long, payloadTimeoutMs: Long, cancel: CancelToken = CancelToken.NEVER): AdbMessage {
         val headerBytes = ByteArray(AdbWire.HEADER_SIZE)
-        readFully(headerBytes, headerBytes.size, headerDeadlineNanos)
+        readFully(headerBytes, headerBytes.size, headerDeadlineNanos, IDLE_POLL_MS, cancel)
         val h = AdbWire.decodeHeader(headerBytes, maxPayload)
         val data = ByteArray(h.length)
-        if (h.length > 0) readFully(data, h.length, nanoClock() + payloadTimeoutMs * NANOS_PER_MS)
+        if (h.length > 0) readFully(data, h.length, nanoClock() + payloadTimeoutMs * NANOS_PER_MS, ACTIVE_POLL_MS, CancelToken.NEVER)
         if (verifyChecksums && AdbWire.checksum(data) != h.checksum) throw AdbProtocolException("Bad payload checksum")
         return AdbMessage(h.command, h.arg0, h.arg1, data)
     }
 
-    private fun readFully(dst: ByteArray, length: Int, deadlineNanos: Long) {
+    private fun readFully(dst: ByteArray, length: Int, deadlineNanos: Long, pollMs: Long, cancel: CancelToken) {
         var done = 0
         var emptyReads = 0
         while (done < length) {
@@ -70,10 +78,11 @@ internal class MessageChannel(
                 continue
             }
             if (stopped) throw AdbClosedException("Connection closed")
-            val remainingMs = if (deadlineNanos == NO_DEADLINE) POLL_MS else (deadlineNanos - nanoClock()) / NANOS_PER_MS
+            if (cancel.isCancelled()) throw AdbCancelledException()
+            val remainingMs = if (deadlineNanos == NO_DEADLINE) pollMs else (deadlineNanos - nanoClock()) / NANOS_PER_MS
             if (remainingMs <= 0) throw AdbTimeoutException("Timed out waiting for the device")
             val n = try {
-                transport.read(scratch, minOf(remainingMs, POLL_MS).toInt())
+                transport.read(scratch, minOf(remainingMs, pollMs).toInt())
             } catch (_: UsbTimeoutException) {
                 continue
             }
@@ -91,7 +100,8 @@ internal class MessageChannel(
     companion object {
         const val NO_DEADLINE = Long.MIN_VALUE
         private const val SCRATCH_SIZE = 16 * 1024
-        private const val POLL_MS = 250L
+        private const val IDLE_POLL_MS = 250L
+        private const val ACTIVE_POLL_MS = 2_000L
         private const val NANOS_PER_MS = 1_000_000L
         private const val MAX_EMPTY_READS = 64
     }

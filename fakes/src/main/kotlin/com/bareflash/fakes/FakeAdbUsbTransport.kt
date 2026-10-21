@@ -1,4 +1,8 @@
-package com.bareflash.adb
+package com.bareflash.fakes
+
+import com.bareflash.adb.AdbCommand
+import com.bareflash.adb.AdbMessage
+import com.bareflash.adb.AdbProtocol
 
 import com.bareflash.usb.UsbDisconnectedException
 import com.bareflash.usb.UsbTimeoutException
@@ -35,13 +39,13 @@ class FakeAdbUsbTransport(
         if (closed || detached) throw UsbDisconnectedException("fake link is down")
         synchronized(this) {
             assembling += data.copyOfRange(offset, offset + length)
-            while (assembling.size >= AdbWire.HEADER_SIZE) {
-                val h = AdbWire.decodeHeader(assembling.copyOf(AdbWire.HEADER_SIZE), Int.MAX_VALUE)
-                if (assembling.size < AdbWire.HEADER_SIZE + h.length) break
-                val payload = assembling.copyOfRange(AdbWire.HEADER_SIZE, AdbWire.HEADER_SIZE + h.length)
-                assembling = assembling.copyOfRange(AdbWire.HEADER_SIZE + h.length, assembling.size)
+            while (assembling.size >= FakeWire.HEADER_SIZE) {
+                val h = FakeWire.decodeHeader(assembling.copyOf(FakeWire.HEADER_SIZE))
+                if (assembling.size < FakeWire.HEADER_SIZE + h.length) break
+                val payload = assembling.copyOfRange(FakeWire.HEADER_SIZE, FakeWire.HEADER_SIZE + h.length)
+                assembling = assembling.copyOfRange(FakeWire.HEADER_SIZE + h.length, assembling.size)
                 if (core.version < AdbProtocol.VERSION_SKIP_CHECKSUM && h.command != AdbCommand.CNXN) {
-                    check(AdbWire.checksum(payload) == h.checksum) { "host sent a bad checksum" }
+                    check(FakeWire.checksum(payload) == h.checksum) { "host sent a bad checksum" }
                 }
                 val m = AdbMessage(h.command, h.arg0, h.arg1, payload)
                 hostMessages += m
@@ -51,7 +55,7 @@ class FakeAdbUsbTransport(
     }
 
     private fun emit(m: AdbMessage) {
-        inbound.add(AdbWire.encodeHeader(m, core.version < AdbProtocol.VERSION_SKIP_CHECKSUM))
+        inbound.add(FakeWire.encodeHeader(m, core.version < AdbProtocol.VERSION_SKIP_CHECKSUM))
         var i = 0
         while (i < m.data.size) {
             val n = minOf(transferSize, m.data.size - i)

@@ -1,5 +1,7 @@
 package com.bareflash.app.adbfb
 
+import com.bareflash.cli.DeviceCommand
+import com.bareflash.cli.Risk
 import com.bareflash.usb.DebugProtocol
 
 /** One attached device that offers ADB and/or fastboot. */
@@ -25,3 +27,12 @@ class AdbFbLink(
     val protocol: DebugProtocol? = null,
     val message: String? = null,
 )
+
+/** A transfer in progress, for the console's progress bar. [total] below zero means unknown. */
+class ConsoleProgress(val label: String, val done: Long, val total: Long) {
+    /** 0f..1f, or null when the size is unknown. */
+    val fraction: Float? get() = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else null
+}
+
+/** A command held back until the user confirms it. [risk] says how hard to ask. */
+class PendingRun(val line: String, val command: DeviceCommand, val risk: Risk)

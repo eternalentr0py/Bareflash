@@ -18,7 +18,7 @@ screen mirroring with touch control over OTG.
 | 1 | `:usbcore` + `:fastboot` protocol, sparse splitter, fake-device tests, libsparse cross-check | done (JVM-verified) |
 | 2 | Android `UsbTransport` over `UsbDeviceConnection`; device-filter by interface class; new `EngineMode` skeleton | done (JVM-verified logic; Android layer compile-checked only, not run on a device) |
 | 3 | `:adb` core: CNXN/AUTH (RSA key in app storage), streams, shell v2, sync, exec | done (JVM tests, real-`adb` interop; not tested on hardware) |
-| 4 | Console tab (real CLI parser for `adb ...` / `fastboot ...`) and Commands tab | |
+| 4 | Console tab (real CLI parser for `adb ...` / `fastboot ...`) and Commands tab, ADB connect in the app | done (JVM tests; screens built by CI, not tested on hardware) |
 | 5 | Device, Files, Apps, Logcat, Fastboot GUI tabs | |
 | 6 | Screen mirror: vendored scrcpy-server + Kotlin client, `MediaCodec` decode, multi-touch mapping | |
 | 7 | Own Java server replacing scrcpy-server | |

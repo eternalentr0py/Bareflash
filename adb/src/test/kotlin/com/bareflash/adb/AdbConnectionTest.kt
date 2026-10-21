@@ -1,5 +1,9 @@
 package com.bareflash.adb
 
+import com.bareflash.fakes.FakeAdbdCore
+import com.bareflash.fakes.FakeAdbUsbTransport
+import com.bareflash.fakes.ShellOutcome
+import com.bareflash.fakes.TestKeys
 import com.bareflash.usb.UsbTimeoutException
 import com.bareflash.usb.UsbTransport
 import org.junit.Assert.assertEquals

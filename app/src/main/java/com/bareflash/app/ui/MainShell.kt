@@ -95,7 +95,7 @@ fun tabsFor(mode: com.bareflash.app.engine.EngineMode): List<Tab> = when (mode) 
     com.bareflash.app.engine.EngineMode.MTK -> listOf(Tab.Console, Tab.Commands, Tab.Dumps, Tab.Settings)
     com.bareflash.app.engine.EngineMode.QDL -> listOf(Tab.Console, Tab.Commands, Tab.Session, Tab.Dumps, Tab.Settings)
     com.bareflash.app.engine.EngineMode.BROKKR -> listOf(Tab.Flash, Tab.Progress, Tab.Devices, Tab.Log, Tab.Settings)
-    com.bareflash.app.engine.EngineMode.ADB_FASTBOOT -> listOf(Tab.AdbDevices, Tab.AdbFastboot, Tab.AdbLog, Tab.Settings)
+    com.bareflash.app.engine.EngineMode.ADB_FASTBOOT -> listOf(Tab.AdbDevices, Tab.AdbConsole, Tab.AdbCommands, Tab.AdbFastboot, Tab.Settings)
 }
 
 enum class Tab(val label: String, val filled: ImageVector, val outlined: ImageVector) {
@@ -113,6 +113,8 @@ enum class Tab(val label: String, val filled: ImageVector, val outlined: ImageVe
 
     // ADB / fastboot mode
     AdbDevices("Devices", Icons.Filled.Usb, Icons.Outlined.Usb),
+    AdbConsole("Console", Icons.Filled.Terminal, Icons.Outlined.Terminal),
+    AdbCommands("Commands", Icons.Filled.ViewModule, Icons.Outlined.ViewModule),
     AdbFastboot("Fastboot", Icons.Filled.Bolt, Icons.Outlined.Bolt),
     AdbLog("Log", Icons.Filled.Description, Icons.Outlined.Description)
 }
@@ -184,6 +186,13 @@ fun MainShell(
     if (switchToConsole != null) {
         LaunchedEffect(switchToConsole) {
             switchToConsole.collect { selectTab(Tab.Console) }
+        }
+    }
+
+    // A command run from the ADB Commands tab brings the ADB console to the front.
+    if (adbfbVm != null) {
+        LaunchedEffect(adbfbVm) {
+            adbfbVm.showConsole.collect { selectTab(Tab.AdbConsole) }
         }
     }
 
@@ -275,7 +284,7 @@ fun MainShell(
                             Tab.Dumps -> dumps()
                             Tab.Settings -> settings()
                             Tab.Flash, Tab.Progress, Tab.Devices, Tab.Log -> brokkr(t)
-                            Tab.AdbDevices, Tab.AdbFastboot, Tab.AdbLog -> adbfb(t)
+                            Tab.AdbDevices, Tab.AdbConsole, Tab.AdbCommands, Tab.AdbFastboot, Tab.AdbLog -> adbfb(t)
                         }
                     }
                 }

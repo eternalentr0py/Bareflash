@@ -2,7 +2,7 @@
 
 **Purpose:** everything needed to continue this project in a new chat with no other context. Paste this file into the new chat, supply a GitHub token (see "Working rules"), and say "continue". The repo may also need to be attached to the session (add_repo with push access) before git/gh work.
 
-**Brief revision:** 3, written after subtask 3 (`:adb` core). Revision history: 1 = `:usbcore` + `:fastboot`; 2 = Android USB transport + ADB/fastboot mode skeleton; 2.1 = CI compile fix; 3 = `:adb` protocol core. Update this file after every implementation step and send it to the owner.
+**Brief revision:** 4, written after subtask 4 (Console and Commands tabs). Revision history: 1 = `:usbcore` + `:fastboot`; 2 = Android USB transport + ADB/fastboot mode skeleton; 2.1 = CI compile fix; 3 = `:adb` protocol core; 4 = `:debugcli` + Console/Commands tabs + ADB connect in the app.
 
 ---
 
@@ -141,6 +141,25 @@ New pure-Kotlin/JVM module `:adb` (`adb/`, package `com.bareflash.adb`, depends 
 
 **Known limits / not implemented:** `cmd`/`abb` services (package install), `forward`/`reverse`, `sendrecv_v2` compressed sync, delayed ack, TLS/wireless, `root:`/`tcpip:`, `track-devices`. Private key stored as plain PKCS#8 in app storage (Android Keystore is a possible hardening step).
 
+## 4e. Implemented in revision 4 (subtask 4: Console and Commands tabs)
+
+**New modules** (all in `settings.gradle.kts`; `:app` depends on `:adb` and `:debugcli`; `testDebugUnitTest` now also depends on `:debugcli:test`; `tests.yml` uploads `debugcli/build/reports/tests/**` too):
+- `:fakes` (`fakes/`, package `com.bareflash.fakes`, no explicit-API): the fake adbd (`FakeAdbdCore`, `FakeFs`, `ShellOutcome`), `FakeAdbUsbTransport`, `FakeFastbootDevice`, `FakeWire` (independent 24-byte header codec), `TestKeys`, and `FakeAdbdServer` (the TCP server for the real-adb interop script). Moved out of `:adb`/`:fastboot` test source sets so `:adb`, `:fastboot` and `:debugcli` tests share them; they use only PUBLIC APIs of `:adb`/`:fastboot`. `:adb` and `:fastboot` have `testImplementation(project(":fakes"))`.
+- `:debugcli` (`debugcli/`, package `com.bareflash.cli`, depends on `:adb` and `:fastboot` via `api`, `explicitApi()`): see `debugcli/README.md` for the file map. Pipeline: typed line, `CommandParser`, `DeviceCommand`, `RiskAssessor`, confirm, `CommandRunner`, `TerminalSink`. Key behaviours: `adb`/`fastboot` prefix optional once connected (bare words are shell commands over ADB, fastboot verbs over fastboot); `adb shell` keeps the raw remainder of the line; `cd` is remembered by the runner (`cd '<dir>' && <cmd>`); stdin closed at once; recursive push/pull skipping symlinks; `exec-out ... > file`; `adb install`, `root`, `forward`, `tcpip` etc. are `Unsupported` with a hint; risk levels SAFE / CAUTION (one-tap confirm) / DANGEROUS (type a phrase); `RunResult.linkLost` tells the app to drop the connection (device rebooting, cable pulled, fastboot download cancelled).
+- `:adb` changes: `MessageChannel.receive` now takes a `CancelToken` polled while waiting for a header (so the approval wait can be cancelled) and uses short USB timeouts only while idle and long ones (2 s) mid-message, because Android discards the data of a bulk transfer that times out half-way; `AdbRebootTarget` gained `DOWNLOAD` (Samsung) and `EDL`; 78 `:adb` tests.
+
+**App changes** (`app/src/main/java/com/bareflash/app/`)
+- `adbfb/AdbFbViewModel.kt`: ADB connect (`openAdb`: `FileAdbKeyStore(filesDir/adb/adbkey).loadOrCreate()`, key name `bareflash@<Build.MODEL>`, `AdbAuthListener` posts "Tap Allow on the USB debugging prompt..." with the key fingerprint while the link is CONNECTING, Cancel = `disconnect()` sets `cancelRequested`); `openFastboot` also builds a `DeviceSession`. Console state: `console` (ConsoleLine list), `progress`, `pending` (PendingRun), `prompt`, `adbInfo`, `showConsole` (SharedFlow). `submit(line)`: history expansion and aliases via the existing `HistoryExpansion`/`Aliases`; only `help`/`man`, `clear`/`cls`, `history`/`alias`/`unalias` are console built-ins (the existing `Shell` built-ins `echo`, `pwd`, `type`, `whoami`, `hostname` are deliberately NOT used so they reach the device); then `CommandParser`, `RiskAssessor`, `execute` on the single worker thread via `launchWork`. `runFromCatalog(line)` emits `showConsole` and submits. `dropLink(reason)` closes the connection after `RunResult.linkLost`. `complete(line)` feeds `CliCompleter` with partitions/variables from the fastboot variables. Local files: `JavaLocalFiles(home = external storage root, downloads = public Downloads)` (needs all-files access).
+- `adbfb/AdbFbModels.kt`: `ConsoleProgress`, `PendingRun`.
+- `ui/adbfb/AdbConsoleScreen.kt` (terminal look from the shared terminal settings, prompt row with `BasicTextField`, hardware keys Enter/Tab/Up/Down/Ctrl+C/L/U, extra-key row, progress bar, copy/share/clear, confirm dialogs: `NcAlertDialog` for CAUTION, `TypedConfirmDialog` for DANGEROUS) and `ui/adbfb/AdbCommandsScreen.kt` (search, categories, cards with argument fields built from `CommandCatalog`, Run disabled with a reason when not applicable).
+- `ui/MainShell.kt`: new tabs `AdbConsole`, `AdbCommands`; ADB tabs are now Devices, Console, Commands, Fastboot, Settings (five, to fit the bottom bar); the protocol Log tab is reached from a button on the Devices screen (`AdbFbTabs` keeps a `showLog` flag); `showConsole` selects the Console tab. `ui/TutorialPages.kt` has text for the new tabs. `ui/adbfb/AdbFbScreens.kt`: Devices rows show Connect for ADB and/or Fastboot plus Cancel while connecting.
+
+**Verification** (275 JVM tests: 154 in usbcore/fastboot/adb plus 121 in debugcli; libsparse and real-`adb` cross-checks still pass)
+- The Compose screens and the ViewModel changes were NOT compiled locally (no Android SDK or Compose); they were reviewed against the real signatures of every app-internal API they call (Shell results, settings, line editing, dialogs, terminal colours, link model). CI is the first real compile.
+- Real devices: not tested.
+
+**Known limits:** no terminal emulation (no `top`/`vi`), stdin not forwarded, environment variables not kept between commands, no remote path completion, `adb install` unsupported (hint: push then `adb shell pm install`), shell risk judgement is a heuristic.
+
 ## 5. Decisions and rationale
 
 - Protocols in **pure Kotlin behind `UsbTransport`** (revised from an earlier idea of C on `bfusb`): memory-safe, JVM-testable with fakes, easiest to audit. A libusb-backed transport can be added later if Android's `UsbDeviceConnection` throughput or cancellation is not good enough.
@@ -154,7 +173,7 @@ New pure-Kotlin/JVM module `:adb` (`adb/`, package `com.bareflash.adb`, depends 
 |---|---|---|
 | 2 (DONE, rev 2) | Android `UsbTransport` + `EngineMode` skeleton | Implement `UsbTransport` over `UsbManager`/`UsbDeviceConnection` (claim the interface matching `UsbInterfaceIds`, find bulk IN/OUT endpoints, chunk bulk transfers, tune size, consider `UsbRequest` for throughput, map errors to `UsbTimeout/Disconnected`). Add an `ADB_FASTBOOT` entry to `EngineMode`, USB permission flow, device list. Extend `device_filter.xml` by interface class (verify Android matches `class/subclass/protocol` against interfaces; if not, handle attach differently). Add `implementation(project(":fastboot"))` (and `:adb`) to `:app`. First place fastboot runs on a real phone; ask the owner to test. |
 | 3 (DONE, rev 3) | `:adb` core | CNXN/AUTH (RSA 2048 key in app-private storage, AUTH_TOKEN/SIGNATURE/RSAPUBLICKEY), OPEN/WRTE/OKAY/CLSE streams with flow control, shell v2 protocol, sync protocol (list/stat/push/pull), `exec:`; max payload negotiation; JVM tests against a fake ADB device. Reference: AOSP `adb/OVERVIEW.TXT`, `adb/protocol.txt`, `adb/SYNC.TXT`. |
-| 4 | Console tab and Commands tab | Real CLI parser for `adb ...` / `fastboot ...`, completion/history reusing `console/shell/*`, a catalog like `McCatalog`, destructive-command confirmation via existing review/typed-confirm dialogs. |
+| 4 (DONE, rev 4) | Console tab and Commands tab | Real CLI parser for `adb ...` / `fastboot ...`, completion/history reusing `console/shell/*`, a catalog like `McCatalog`, destructive-command confirmation via existing review/typed-confirm dialogs. |
 | 5 | GUI tabs | Device info + reboot menu, Files (sync), Apps (list/install incl. split APKs/uninstall/extract/permissions), Logcat, Fastboot (getvar table, flash, erase, slots, typed confirm for unlock/lock). |
 | 6 | Screen mirror | Vendored scrcpy-server + Kotlin client + MediaCodec + multitouch mapping; version-pinned. |
 | 7 | Own Java server replacing scrcpy-server | |
@@ -183,6 +202,8 @@ Gotchas seen: `internal` symbols need `-Xfriend-paths` when tests are compiled s
 
 Rev 3 additions for ADB: `apt-get install -y adb` gives the real `adb` 34.0.4 host binary (no `adbd` package exists on Ubuntu 24.04); `pip install --break-system-packages adb-shell rsa cryptography` gives reference implementations for key/signature/header vectors. Compile `:adb` with `-Xexplicit-api=strict` together with the `:usbcore` sources, tests with `-Xfriend-paths`. Run the real-adb check with `adb/tools/interop-real-adb.sh <main-classes> <test-classes> <kotlin-stdlib.jar>`. Gotchas: never `pkill -f` a pattern that appears in your own command (it kills the tool shell); start background servers with `setsid nohup ... &` and kill by saved pid; `adb connect` returns before the user prompt is answered (that is not a failure); JUnit test methods must return Unit (helper functions taking lambdas must return Unit too).
 
+Rev 4 additions: build order for local verification is usbcore + fastboot + adb (strict), then `:fakes` (`-cp main`), then `:debugcli` (strict), then tests with `-Xfriend-paths` and all of those on the classpath; the real-adb script now takes `<main-classes> <fakes-classes> <stdlib>`. The app layer cannot be compiled in the sandbox: review every call against real signatures (grep the definitions) because CI is the only compiler. Design lesson: keep logic in pure modules and keep Compose files thin.
+
 ## 8. Build log
 
 | Revision | Commit | Build & Release | Notes |
@@ -190,10 +211,12 @@ Rev 3 additions for ADB: `apt-get install -y adb` gives the real `adb` 34.0.4 ho
 | 1 | "Add :usbcore and :fastboot modules (native fastboot protocol, subtask 1)" `f7552fb` | Tests green; `1.0.1-beta.7` green | A first dispatch ran on old `main` (push had been rejected) and was cancelled; re-dispatched after the corrected push. |
 | 2 | "Add Android USB transport and ADB/fastboot mode skeleton (subtask 2)" `6426ac4` | Tests **failed**, `1.0.1-beta.8` **failed** | Non-exhaustive `when` in `ConsoleViewModel.liveEngineFor`. |
 | 2.1 | "Fix non-exhaustive EngineMode when (LiveEngine.Adb)" `a23482d` | Tests green; `1.0.1-beta.8` green | |
-| 3 | "Add :adb module (native ADB protocol core, subtask 3)" | dispatched as `1.0.1-beta.9`, not awaited | First CI run of the `:adb` Gradle module and of the `AdbFbUsb` default-config change. If it fails the owner pastes logs. |
+| 3 | "Add :adb module (native ADB protocol core, subtask 3)" `1a3642d` | Tests green; `1.0.1-beta.9` green | |
+| 4 | "Add :debugcli and the ADB Console and Commands tabs (subtask 4)" | dispatched as `1.0.1-beta.10`, not awaited | First CI compile of the Compose screens and the ViewModel changes. If it fails the owner pastes logs; fix compile errors first. |
 
 ## 9. Next step
 
-1. Owner reports the result of the revision-3 Tests and Build & Release runs (paste logs if they fail; fix compile errors first).
-2. Subtask 4: Console tab and Commands tab. In `AdbFbViewModel.connect`, branch on protocol: ADB opens `AdbConnection.connect(conn.transport, keys, config, listener)` with an `AdbKeyStore` (a `FileAdbKeyStore` under `filesDir`), surfaces the "accept on the device" state with the key fingerprint, and keeps the `AdbConnection` for the tabs; then a CLI parser for `adb ...` / `fastboot ...` lines, completion/history reusing `console/shell/*`, and a command catalog, with destructive commands (flash, erase, unlock, `rm`, `reboot` variants, `push` overwrite) going through the existing review/typed-confirm dialogs. Remember: every new `EngineMode`/`LiveEngine`/`Tab` value needs every exhaustive `when` updated.
-3. Ask the owner to test ADB and fastboot on real phones (USB debugging prompt, shell, file list/push/pull, fastboot variables, reboot) and report what differs.
+1. Owner reports the result of the revision-4 Tests and Build & Release runs (paste logs if they fail; fix compile errors first, most likely in `AdbFbViewModel.kt`, `AdbConsoleScreen.kt`, `AdbCommandsScreen.kt` or `AdbFbScreens.kt`).
+2. Ask the owner to test on real phones: ADB connect and the USB-debugging prompt, a few shell commands, `cd`, push/pull of a file and a folder, a catalog command, a risky command's confirmation, fastboot `getvar all`, a flash of a small image, reboot. Anything that differs from the fakes (timing, ZLP, prompt behaviour, fingerprint text) needs fixing in `:adb`.
+3. Subtask 5: GUI tabs for the rest: Device info, Files (browser over `AdbSyncSession.list/stat/pull/push`, pick local files via the document picker or paths), Apps (list/install/uninstall/extract/permissions; install needs the `cmd`/`abb_exec` services or `pm install` of a pushed file), Logcat (filter/search/save), Fastboot (partition table, flash, slots, unlock). Keep logic in pure modules with tests; keep Compose thin.
+4. Then subtask 6: screen mirror (vendor scrcpy-server, Kotlin client, `MediaCodec`, touch mapping).

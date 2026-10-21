@@ -1,6 +1,6 @@
 name: Tests
 
-# JVM unit tests (app/src/test plus the :usbcore, :fastboot and :adb protocol
+# JVM unit tests (app/src/test plus the :usbcore, :fastboot, :adb and :debugcli protocol
 # modules). They check pure logic only: parsers, command planning, formatting,
 # and the protocols against fake devices. Nothing here touches a USB device, so a green run says
 # nothing about hardware; see docs/RELEASE_CHECKLIST.md for the device matrix.
@@ -83,4 +83,5 @@ jobs:
             usbcore/build/reports/tests/**
             fastboot/build/reports/tests/**
             adb/build/reports/tests/**
+            debugcli/build/reports/tests/**
           if-no-files-found: ignore

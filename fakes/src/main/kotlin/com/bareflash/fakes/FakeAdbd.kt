@@ -1,4 +1,8 @@
-package com.bareflash.adb
+package com.bareflash.fakes
+
+import com.bareflash.adb.AdbCommand
+import com.bareflash.adb.AdbMessage
+import com.bareflash.adb.AdbProtocol
 
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
@@ -11,6 +15,14 @@ import java.security.spec.RSAPublicKeySpec
 import javax.crypto.Cipher
 
 /** The device's in-memory filesystem for sync tests. Paths are absolute, no trailing slash. */
+/** Shell v2 packet ids (the wire values, kept here so the fakes need no internal API). */
+private const val SHELL_STDIN = 0
+private const val SHELL_STDOUT = 1
+private const val SHELL_STDERR = 2
+private const val SHELL_EXIT = 3
+private const val SHELL_CLOSE_STDIN = 4
+private const val SHELL_WINDOW_SIZE = 5
+
 class FakeFs {
     class Entry(var data: ByteArray, var mode: Int, var mtime: Long)
 
@@ -185,9 +197,9 @@ class FakeAdbdCore(
         override fun start(out: MutableList<AdbMessage>) {
             if (command == "cat") return // interactive echo, driven by stdin packets
             val r = shellHandler(command)
-            if (r.stdout.isNotEmpty()) packet(AdbShellSession.ID_STDOUT, r.stdout)
-            if (r.stderr.isNotEmpty()) packet(AdbShellSession.ID_STDERR, r.stderr)
-            packet(AdbShellSession.ID_EXIT, byteArrayOf(r.exit.toByte()))
+            if (r.stdout.isNotEmpty()) packet(SHELL_STDOUT, r.stdout)
+            if (r.stderr.isNotEmpty()) packet(SHELL_STDERR, r.stderr)
+            packet(SHELL_EXIT, byteArrayOf(r.exit.toByte()))
             closeWhenDone = true
         }
 
@@ -200,9 +212,9 @@ class FakeAdbdCore(
                 val payload = inbuf.copyOfRange(5, 5 + len)
                 inbuf = inbuf.copyOfRange(5 + len, inbuf.size)
                 when (kind) {
-                    AdbShellSession.ID_STDIN -> { stdinSeen.write(payload); if (command == "cat") packet(AdbShellSession.ID_STDOUT, payload) }
-                    AdbShellSession.ID_CLOSE_STDIN -> if (command == "cat") { packet(AdbShellSession.ID_EXIT, byteArrayOf(0)); closeWhenDone = true }
-                    AdbShellSession.ID_WINDOW_SIZE -> resizes += String(payload)
+                    SHELL_STDIN -> { stdinSeen.write(payload); if (command == "cat") packet(SHELL_STDOUT, payload) }
+                    SHELL_CLOSE_STDIN -> if (command == "cat") { packet(SHELL_EXIT, byteArrayOf(0)); closeWhenDone = true }
+                    SHELL_WINDOW_SIZE -> resizes += String(payload)
                 }
             }
             pump(out)

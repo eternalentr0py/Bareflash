@@ -159,14 +159,15 @@ dependencies {
     // :usbcore (the transport interface) through api(), so both are visible here.
     implementation(project(":fastboot"))
     implementation(project(":adb"))
+    implementation(project(":debugcli"))
 
     // JVM unit tests (app/src/test). Run with: ./gradlew testDebugUnitTest
     testImplementation("junit:junit:4.13.2")
 }
 
-// The pure-Kotlin protocol modules (:usbcore, :fastboot, :adb) have their own JVM
+// The pure-Kotlin protocol modules (:usbcore, :fastboot, :adb, :debugcli) have their own JVM
 // tests. Running them from the existing testDebugUnitTest keeps the Tests
 // workflow (./gradlew testDebugUnitTest) covering them without a CI change.
 tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
-    dependsOn(":usbcore:test", ":fastboot:test", ":adb:test")
+    dependsOn(":usbcore:test", ":fastboot:test", ":adb:test", ":debugcli:test")
 }

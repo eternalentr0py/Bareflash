@@ -1,5 +1,6 @@
 package com.bareflash.fastboot
 
+import com.bareflash.fakes.FakeFastbootDevice
 import com.bareflash.usb.CancelToken
 import com.bareflash.usb.UsbDisconnectedException
 import org.junit.Assert.assertArrayEquals

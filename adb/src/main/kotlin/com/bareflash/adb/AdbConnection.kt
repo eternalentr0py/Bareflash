@@ -217,7 +217,7 @@ public class AdbConnection private constructor(
             var deadline = System.nanoTime() + config.connectTimeoutMs * NANOS_PER_MS
             while (true) {
                 if (cancel.isCancelled()) throw AdbCancelledException()
-                val m = channel.receive(deadline, PAYLOAD_TIMEOUT_MS)
+                val m = channel.receive(deadline, PAYLOAD_TIMEOUT_MS, cancel)
                 when (m.command) {
                     AdbCommand.CNXN -> return finishConnect(transport, channel, config, log, m)
                     AdbCommand.AUTH -> {

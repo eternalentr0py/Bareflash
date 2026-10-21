@@ -9,8 +9,10 @@ import org.junit.Test
 /** A transport that replays fixed reads, one scripted result at a time. */
 private class Scripted(private val reads: MutableList<ByteArray?>) : UsbTransport {
     val written = ArrayList<ByteArray>()
+    val readTimeouts = ArrayList<Int>()
     override fun write(data: ByteArray, offset: Int, length: Int, timeoutMs: Int) { written += data.copyOfRange(offset, offset + length) }
     override fun read(buffer: ByteArray, timeoutMs: Int): Int {
+        readTimeouts += timeoutMs
         val next = if (reads.isEmpty()) null else reads.removeAt(0)
         if (next == null) { Thread.sleep(2); throw UsbTimeoutException("t") }
         System.arraycopy(next, 0, buffer, 0, next.size)
@@ -75,5 +77,20 @@ class MessageChannelTest {
         ch.send(AdbMessage(AdbCommand.WRTE, 1, 2, byteArrayOf(5, 6)))
         ch.send(AdbMessage(AdbCommand.OKAY, 1, 2))
         assertEquals(listOf(24, 2, 24), t.written.map { it.size })
+    }
+
+    @Test fun anIdleHeaderWaitCanBeCancelled() {
+        val ch = MessageChannel(Scripted(mutableListOf()), 4096, 1000)
+        var polls = 0
+        assertThrows<AdbCancelledException> { ch.receive(MessageChannel.NO_DEADLINE, 1000) { ++polls > 3 } }
+    }
+
+    @Test fun headerWaitsUseShortTimeoutsAndPayloadWaitsLongOnes() {
+        val m = AdbMessage(AdbCommand.WRTE, 1, 2, pattern(50))
+        val t = Scripted(mutableListOf(wire(m).copyOf(24), null, null, wire(m).copyOfRange(24, 74)))
+        val got = MessageChannel(t, 4096, 1000).receive(MessageChannel.NO_DEADLINE, 10_000)
+        assertArrayEquals(m.data, got.data)
+        // Reads 1: header (idle poll). Reads 2-3: payload stalls (long poll). Read 4: payload arrives.
+        assertEquals(listOf(250, 2000, 2000, 2000), t.readTimeouts)
     }
 }
