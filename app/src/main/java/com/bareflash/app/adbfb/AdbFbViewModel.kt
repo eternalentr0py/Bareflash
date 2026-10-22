@@ -327,6 +327,11 @@ class AdbFbViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(io) {
             try {
                 block()
+            } catch (t: Throwable) {
+                // Nothing a device or a command does may take the app down: show it and drop the link.
+                AppLog.w(TAG, "Operation crashed: $t", t)
+                sink.error("Internal error (${t.javaClass.simpleName}): ${t.message ?: "no details"}")
+                dropLink("An internal error stopped the operation, so the connection was closed.")
             } finally {
                 _busy.value = false
             }

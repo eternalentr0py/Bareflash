@@ -73,6 +73,11 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace -Dorg.gradle.vfs.watch=false
 
+      # The protocol modules run inside the Android app. Fail if their compiled classes call
+      # JDK 9+ methods that older Android lacks: the resulting NoSuchMethodError kills the app.
+      - name: Check the protocol modules for Android-incompatible calls
+        run: python3 tools/scan-android-apis.py usbcore/build/classes/kotlin/main fastboot/build/classes/kotlin/main adb/build/classes/kotlin/main debugcli/build/classes/kotlin/main
+
       - name: Keep the test report if it failed
         if: failure()
         uses: actions/upload-artifact@v4

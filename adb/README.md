@@ -18,6 +18,8 @@ it runs and is tested on a plain JVM.
 
 ## Integration notes
 
+- **Built against the JDK 8 API.** This module runs inside the Android app, so its Gradle config uses Java 8 bytecode and `-Xjdk-release=8`. Without it, calls like `ByteBuffer.position(int)` are compiled with JDK 9 return types that older Android lacks, and the app dies with `NoSuchMethodError`. CI also scans the compiled classes (`tools/scan-android-apis.py`).
+
 - **ADB over USB needs zero-length packets.** Build the transport with `BulkTransportConfig(zeroLengthPacketAfterFullFinalPacket = true)`. `AdbFbUsb.open` does this by default for the ADB protocol.
 - **Ownership.** `AdbConnection.connect` leaves the transport with the caller if it throws; on success the connection owns it and `close()` closes it.
 - **First connection.** An unknown key makes the device show "Allow USB debugging?". `connect` calls `AdbAuthListener.onWaitingForUserApproval(fingerprint)` and waits up to `approvalTimeoutMs` (60 s). Store the key with an `AdbKeyStore` so "Always allow" sticks. The private key is plain PKCS#8 in app storage; moving it into the Android Keystore is a possible hardening step.

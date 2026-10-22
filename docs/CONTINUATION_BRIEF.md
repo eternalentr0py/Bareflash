@@ -2,7 +2,7 @@
 
 **Purpose:** everything needed to continue this project in a new chat with no other context. Paste this file into the new chat, supply a GitHub token (see "Working rules"), and say "continue". The repo may also need to be attached to the session (add_repo with push access) before git/gh work.
 
-**Brief revision:** 4, written after subtask 4 (Console and Commands tabs). Revision history: 1 = `:usbcore` + `:fastboot`; 2 = Android USB transport + ADB/fastboot mode skeleton; 2.1 = CI compile fix; 3 = `:adb` protocol core; 4 = `:debugcli` + Console/Commands tabs + ADB connect in the app.
+**Brief revision:** 4.1, written after the Android-compatibility crash fix. Revision history: 1 = `:usbcore` + `:fastboot`; 2 = Android USB transport + ADB/fastboot mode skeleton; 2.1 = CI compile fix; 3 = `:adb` protocol core; 4 = `:debugcli` + Console/Commands tabs + ADB connect in the app; 4.1 = fix for every ADB command crashing the app (JDK 9 API calls).
 
 ---
 
@@ -160,6 +160,20 @@ New pure-Kotlin/JVM module `:adb` (`adb/`, package `com.bareflash.adb`, depends 
 
 **Known limits:** no terminal emulation (no `top`/`vi`), stdin not forwarded, environment variables not kept between commands, no remote path completion, `adb install` unsupported (hint: push then `adb shell pm install`), shell risk judgement is a heuristic.
 
+## 4f. Revision 4.1: every ADB command crashed the app
+
+**Report:** after revision 4 the owner reported "all ADB commands crash the app" (no log supplied).
+
+**Diagnosis (from bytecode, not from a crash log):** the pure-Kotlin modules were compiled against the JDK 17 API. With it, `charBuffer.flip()` and `byteBuffer.position(int)` are emitted as JDK 9 covariant calls (`CharBuffer.flip()Ljava/nio/CharBuffer;`, `ByteBuffer.position(I)Ljava/nio/ByteBuffer;`) that older Android does not have, so the app throws `NoSuchMethodError`. That is an `Error`, so every `catch (e: Exception)` missed it, and `launchWork` (a coroutine with no catch-all) let it kill the app. Offenders found by scanning the compiled classes: `Utf8Streamer` (called on every shell/exec output, so every console command) and `AdbSyncSession.skip` (stat/list v2, so push/pull/ls). A constant-pool scanner confirmed exactly these two calls in the revision-4 build.
+
+**Fixes:**
+- Call sites: `Utf8Streamer` and `AdbSyncSession.skip` now call `flip()`/`position()` through a `java.nio.Buffer`-typed reference.
+- **Build config (root cause):** all five pure modules (`:usbcore`, `:fastboot`, `:adb`, `:debugcli`, `:fakes`) now build with `jvmTarget JVM_1_8`, `java` compatibility 1.8 and `freeCompilerArgs "-Xjdk-release=8"`, i.e. Java 8 bytecode against the JDK 8 API, so this class of bug cannot compile. Verified locally: the unfixed source compiled this way emits `CharBuffer.flip:()Ljava/nio/Buffer;`. `-Xjdk-release` needs a full JDK with `ct.sym` (CI's `setup-java` JDK has it) and must be combined with a matching `-jvm-target`; it conflicts with `-jvm-target 17`.
+- Second safety net: `tools/scan-android-apis.py <classes-dir>...` (constant-pool scan for covariant Buffer methods and `ConcurrentHashMap.keySet`; exits 1 on a hit, 2 on a missing or empty directory) runs as a step in `tests.yml` after the unit tests on `*/build/classes/kotlin/main`.
+- Robustness: `AdbConnection.readLoop` now also catches `Error` and fails the connection (an uncaught exception on any thread kills an Android app); `AdbFbViewModel.launchWork` now catches `Throwable`, logs it, prints "Internal error (...)" in the console and drops the link, so no failure can take the app down.
+
+**Lesson:** never trust "it passes on the JVM" for code that ships in Android. Keep the JDK 8 API build flag; avoid APIs newer than Android's minSdk 26; on any crash report, ask for the logcat stack trace (the app's Log screen or `adb logcat`). If the crash persists after this fix the cause is something else and the stack trace is needed.
+
 ## 5. Decisions and rationale
 
 - Protocols in **pure Kotlin behind `UsbTransport`** (revised from an earlier idea of C on `bfusb`): memory-safe, JVM-testable with fakes, easiest to audit. A libusb-backed transport can be added later if Android's `UsbDeviceConnection` throughput or cancellation is not good enough.
@@ -212,11 +226,13 @@ Rev 4 additions: build order for local verification is usbcore + fastboot + adb 
 | 2 | "Add Android USB transport and ADB/fastboot mode skeleton (subtask 2)" `6426ac4` | Tests **failed**, `1.0.1-beta.8` **failed** | Non-exhaustive `when` in `ConsoleViewModel.liveEngineFor`. |
 | 2.1 | "Fix non-exhaustive EngineMode when (LiveEngine.Adb)" `a23482d` | Tests green; `1.0.1-beta.8` green | |
 | 3 | "Add :adb module (native ADB protocol core, subtask 3)" `1a3642d` | Tests green; `1.0.1-beta.9` green | |
-| 4 | "Add :debugcli and the ADB Console and Commands tabs (subtask 4)" | dispatched as `1.0.1-beta.10`, not awaited | First CI compile of the Compose screens and the ViewModel changes. If it fails the owner pastes logs; fix compile errors first. |
+| 4 | "Add :debugcli and the ADB Console and Commands tabs (subtask 4)" `fbdc76a` | `1.0.1-beta.10` dispatched; owner reported every ADB command crashes the app | Root cause: JDK 9 covariant Buffer calls (see 4f). |
+| 4.1 | "Fix ADB crash: build against the JDK 8 API" | dispatched as `1.0.1-beta.11`, not awaited | If it still crashes, get the logcat stack trace. |
 
 ## 9. Next step
 
-1. Owner reports the result of the revision-4 Tests and Build & Release runs (paste logs if they fail; fix compile errors first, most likely in `AdbFbViewModel.kt`, `AdbConsoleScreen.kt`, `AdbCommandsScreen.kt` or `AdbFbScreens.kt`).
-2. Ask the owner to test on real phones: ADB connect and the USB-debugging prompt, a few shell commands, `cd`, push/pull of a file and a folder, a catalog command, a risky command's confirmation, fastboot `getvar all`, a flash of a small image, reboot. Anything that differs from the fakes (timing, ZLP, prompt behaviour, fingerprint text) needs fixing in `:adb`.
-3. Subtask 5: GUI tabs for the rest: Device info, Files (browser over `AdbSyncSession.list/stat/pull/push`, pick local files via the document picker or paths), Apps (list/install/uninstall/extract/permissions; install needs the `cmd`/`abb_exec` services or `pm install` of a pushed file), Logcat (filter/search/save), Fastboot (partition table, flash, slots, unlock). Keep logic in pure modules with tests; keep Compose thin.
-4. Then subtask 6: screen mirror (vendor scrcpy-server, Kotlin client, `MediaCodec`, touch mapping).
+1. Owner tests `1.0.1-beta.11` on the phone. If any command still crashes, ask for the stack trace (Log screen on the Devices tab, or `adb logcat -b crash` / `adb logcat | grep -i FATAL`) and fix from that.
+2. Owner reports the Tests and Build & Release results for revision 4.1 (paste logs if they fail; the likeliest new failure is the `-Xjdk-release=8` Gradle setup, which needs a full JDK on the runner).
+3. Real-device check list: ADB connect and the USB-debugging prompt, a few shell commands, `cd`, push/pull of a file and a folder, a catalog command, a risky command's confirmation, fastboot `getvar all`, flashing a small image, reboot.
+4. Then subtask 5: GUI tabs (Device info, Files, Apps, Logcat, Fastboot partitions). Keep logic in pure modules with tests, and build them with the JDK 8 API setting.
+5. Then subtask 6: screen mirror (vendor scrcpy-server, Kotlin client, `MediaCodec`, touch mapping).

@@ -145,6 +145,10 @@ public class AdbConnection private constructor(
             fail(if (e is AdbException) e else AdbClosedException("USB link failed: ${e.message}", e))
         } catch (e: RuntimeException) {
             fail(AdbProtocolException("Internal error in reader: $e"))
+        } catch (e: Error) {
+            // An Error here (for example a LinkageError from a bad platform call) would otherwise end
+            // this thread uncaught, which crashes an Android app. Fail the connection instead.
+            fail(AdbClosedException("Internal error in the ADB reader: $e"))
         }
     }
 

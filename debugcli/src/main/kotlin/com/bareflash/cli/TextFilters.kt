@@ -1,5 +1,6 @@
 package com.bareflash.cli
 
+import java.nio.Buffer
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
 import java.nio.charset.CodingErrorAction
@@ -19,8 +20,7 @@ public class Utf8Streamer {
         val out = CharBuffer.allocate(input.remaining() + 2)
         decoder.decode(input, out, false)
         pending = ByteArray(input.remaining()).also { input.get(it) }
-        out.flip()
-        return out.toString()
+        return flipToString(out)
     }
 
     /** Whatever is left once no more data will come. */
@@ -31,8 +31,20 @@ public class Utf8Streamer {
         decoder.flush(out)
         pending = ByteArray(0)
         decoder.reset()
-        out.flip()
-        return out.toString()
+        return flipToString(out)
+    }
+
+    private companion object {
+        /**
+         * Calls flip() as declared on Buffer. JDK 9 added covariant overrides
+         * (CharBuffer.flip() returning CharBuffer) that older Android versions
+         * lack, so calling them by their JDK 9 signature crashes the app there.
+         */
+        fun flipToString(out: CharBuffer): String {
+            val buffer: Buffer = out
+            buffer.flip()
+            return out.toString()
+        }
     }
 }
 

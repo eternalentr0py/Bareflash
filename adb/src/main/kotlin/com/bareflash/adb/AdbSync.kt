@@ -275,7 +275,11 @@ public class AdbSyncSession internal constructor(
         return String(b, Charsets.UTF_8)
     }
 
-    private fun skip(b: ByteBuffer, n: Int) { b.position(b.position() + n) }
+    /** position() as declared on Buffer: the covariant ByteBuffer.position(int) of JDK 9 does not exist on older Android. */
+    private fun skip(b: ByteBuffer, n: Int) {
+        val buffer: java.nio.Buffer = b
+        buffer.position(buffer.position() + n)
+    }
 
     /** Entry names come from the device, so refuse anything that could escape a directory. */
     private fun addEntry(out: MutableList<RemoteFile>, name: String, stat: RemoteFileStat) {
